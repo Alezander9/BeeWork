@@ -50,9 +50,9 @@ def main():
     parser.add_argument("--question", required=True, help="Question to answer from the knowledgebase")
     args = parser.parse_args()
 
-    gemini_key = os.environ.get("GEMINI_API_KEY")
+    gemini_key = os.environ.get("GEMINI_API_KEY_0")
     if not gemini_key:
-        raise EnvironmentError("Set GEMINI_API_KEY")
+        raise EnvironmentError("Set GEMINI_API_KEY_0")
     github_pat = os.environ.get("GITHUB_PAT")
     if not github_pat:
         raise EnvironmentError("Set GITHUB_PAT")

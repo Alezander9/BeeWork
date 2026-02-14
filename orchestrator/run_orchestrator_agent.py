@@ -1,10 +1,15 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import argparse
 import json
 import os
 import shlex
-from pathlib import Path
 from dotenv import load_dotenv
 import modal
+from lmnr import Laminar
+from shared.tracing import observe_agent_events
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -13,6 +18,9 @@ AGENT_DIR = Path(__file__).parent
 KB_DIR = "/root/code/knowledgebase"
 WEB_SEARCHES_DIR = "/root/code/web_searches"
 RESEARCH_TASKS_DIR = "/root/code/research_tasks"
+
+OPENCODE_CONFIG = json.loads((AGENT_DIR / "opencode.json").read_text())
+MODEL_ID = OPENCODE_CONFIG.get("agent", {}).get("build", {}).get("model", "unknown")
 
 # Container image: Debian + OpenCode + agent dir (AGENTS.MD, opencode.json, tools/)
 image = (
@@ -54,12 +62,13 @@ def run(repo_name, project_path, key_index=0):
     project_content = Path(project_path).read_text()
 
     gemini_env = f"GEMINI_API_KEY_{key_index}"
-    required = ["ANTHROPIC_API_KEY", "GITHUB_PAT", "PARALLEL_API_KEY", gemini_env]
+    required = ["ANTHROPIC_API_KEY", "GITHUB_PAT", "PARALLEL_API_KEY", gemini_env, "LMNR_PROJECT_API_KEY"]
     missing = [k for k in required if not os.environ.get(k)]
     if missing:
         raise EnvironmentError(f"Missing env vars: {', '.join(missing)}")
 
     github_pat = os.environ["GITHUB_PAT"]
+    Laminar.initialize(project_api_key=os.environ["LMNR_PROJECT_API_KEY"])
 
     app = modal.App.lookup("test-opencode", create_if_missing=True)
     secret = modal.Secret.from_dict({
@@ -127,15 +136,11 @@ def run(repo_name, project_path, key_index=0):
 
     # Run the agent from /root/code (where opencode.json, AGENTS.MD, tools/ live)
     # pty=True is required -- OpenCode hangs without a pseudo-terminal
-    print("Running agent...")
+    print(f"Running agent (model: {MODEL_ID})...")
     proc = sb.exec("bash", "-c",
-        "opencode run 'Follow the instructions in AGENTS.md'",
+        "opencode run --format json 'Follow the instructions in AGENTS.md'",
         pty=True)
-    for line in proc.stdout:
-        print(line, end="")
-
-    proc.wait()
-    agent_rc = proc.returncode
+    agent_rc = observe_agent_events(proc, MODEL_ID, "orchestrator")
 
     # Collect research tasks created by create_research_task.py
     TASKS_FILE = "/tmp/all_tasks.json"
