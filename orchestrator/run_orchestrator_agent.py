@@ -49,11 +49,12 @@ def run_cmd(proc, show=False):
 OWNER = "workerbee-gbt"
 
 
-def run(repo_name, project_path):
+def run(repo_name, project_path, key_index=0):
     """Run the orchestrator agent. Returns a list of research task dicts."""
     project_content = Path(project_path).read_text()
 
-    required = ["ANTHROPIC_API_KEY", "GITHUB_PAT", "PARALLEL_API_KEY", "GEMINI_API_KEY"]
+    gemini_env = f"GEMINI_API_KEY_{key_index}"
+    required = ["ANTHROPIC_API_KEY", "GITHUB_PAT", "PARALLEL_API_KEY", gemini_env]
     missing = [k for k in required if not os.environ.get(k)]
     if missing:
         raise EnvironmentError(f"Missing env vars: {', '.join(missing)}")
@@ -63,7 +64,7 @@ def run(repo_name, project_path):
     app = modal.App.lookup("test-opencode", create_if_missing=True)
     secret = modal.Secret.from_dict({
         "ANTHROPIC_API_KEY": os.environ["ANTHROPIC_API_KEY"],
-        "GOOGLE_GENERATIVE_AI_API_KEY": os.environ["GEMINI_API_KEY"],
+        "GOOGLE_GENERATIVE_AI_API_KEY": os.environ[gemini_env],
         "GITHUB_PAT": github_pat,
         "GH_TOKEN": github_pat,
         "PARALLEL_API_KEY": os.environ["PARALLEL_API_KEY"],
