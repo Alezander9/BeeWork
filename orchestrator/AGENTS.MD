@@ -8,18 +8,17 @@ The knowledgebase repo is located at `knowledgebase/` in your working directory.
 
 ## Task
 
-I want to create a knowledge base on everything related to the California renewable gas industry. Specifically I want you to look at all the major companies. This should be a brief overview of the companies and their role in the industry.
+Your project requirements are defined in `PROJECT.MD`. Read it first -- it is your primary directive. Everything you do should follow the objectives, structure, and scope described there.
 
 Follow these steps:
 
-1. **Research**: Use `tools/search_web.py` to search for information about California renewable gas companies, industry players, regulations, and key topics. Perform multiple searches to get a comprehensive view.
+1. **Read `PROJECT.MD`** to understand what the knowledge base should contain.
 
-2. **Create file structure**: Based on your research, create an organized file structure in `knowledgebase/` with markdown files for each company and topic. Do not populate the files with detailed content — just add a title and brief placeholder.
+2. **Research**: Use `tools/search_web.py` to search for information relevant to the project. Perform multiple searches to get a comprehensive view of the space.
 
-3. **Create research tasks**: For **each file** in the knowledge base, create **3–5 separate research tasks** using `tools/create_research_task.py`. Each task should target the **same file** but cover a **different subtopic** and use a **different website** as its source. Do NOT create only one task per file — a single source produces shallow, one-sided content. For example, for a company file like `knowledgebase/companies/socalgas.md`, you would create separate tasks like:
-   - Agent 1 (company's own site): `--topic "SoCalGas overview" --websites "https://www.socalgas.com"`
-   - Agent 2 (regulator): `--topic "SoCalGas regulatory filings" --websites "https://www.cpuc.ca.gov"`
-   - Agent 3 (news): `--topic "SoCalGas RNG news" --websites "https://www.reuters.com"`
+3. **Create file structure**: Based on your research, create an organized file structure in `knowledgebase/` with markdown files as described in `PROJECT.MD`. Do not populate the files with detailed content -- just add a title and brief placeholder.
+
+4. **Create research tasks**: For each file in the knowledge base, create research tasks using `tools/create_research_task.py`. Each task should target a **single file** and use a **different website** as its source. Follow the scope constraints in `PROJECT.MD` for how many tasks to create.
 
 ## Tools
 
@@ -27,7 +26,7 @@ Follow these steps:
 
 Usage: `python tools/search_web.py "<objective>" <filename>`
 
-Searches the web and saves results to `web_searches/<filename>`. The output directory is managed automatically — just provide a filename (e.g., `research.json`). Read the saved file to extract information for the knowledgebase.
+Searches the web and saves results to `web_searches/<filename>`. The output directory is managed automatically -- just provide a filename (e.g., `research.json`). Read the saved file to extract information.
 
 ### create_research_task.py
 
@@ -35,7 +34,7 @@ Usage: `python tools/create_research_task.py --topic "<topic>" --prompt "<prompt
 
 Creates a research task to populate a specific file in the knowledge base.
 
-- `--topic`: The topic for this agent (e.g., "SoCalGas renewable gas programs")
+- `--topic`: The topic for this research task
 - `--prompt`: Detailed instructions for what information the agent should find and write
-- `--file-path`: The path of the knowledge base file to edit (e.g., "knowledgebase/companies/socalgas.md")
-- `--websites`: A relevant website to search for information (e.g., "https://www.socalgas.com")
+- `--file-path`: The path of the knowledge base file to edit (e.g., "knowledgebase/companies/example.md")
+- `--websites`: A relevant website to search for information (e.g., "https://example.com")

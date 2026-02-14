@@ -49,8 +49,10 @@ def run_cmd(proc, show=False):
 OWNER = "workerbee-gbt"
 
 
-def run(repo_name, prompt="Follow the instructions in AGENTS.md"):
+def run(repo_name, project_path):
     """Run the orchestrator agent. Returns a list of research task dicts."""
+    project_content = Path(project_path).read_text()
+
     required = ["ANTHROPIC_API_KEY", "GITHUB_PAT", "PARALLEL_API_KEY", "GEMINI_API_KEY"]
     missing = [k for k in required if not os.environ.get(k)]
     if missing:
@@ -82,13 +84,11 @@ def run(repo_name, prompt="Follow the instructions in AGENTS.md"):
     check_rc = run_cmd(sb.exec("bash", "-c", f"gh repo view {safe_repo_name} --json name"), show=False)
 
     if check_rc == 0:
-        # Repo exists — just clone it
         print(f"Repo '{repo_name}' already exists, cloning...")
         rc = run_cmd(sb.exec("bash", "-c",
             f"gh repo clone {safe_repo_name} {KB_DIR}"
         ), show=True)
     else:
-        # Repo doesn't exist — create and clone
         print(f"Creating new GitHub repo '{repo_name}'...")
         create_cmd = (
             f"gh repo create {safe_repo_name} --public --clone "
@@ -106,19 +106,29 @@ def run(repo_name, prompt="Follow the instructions in AGENTS.md"):
     run_cmd(sb.exec("bash", "-c",
         f"cd {KB_DIR} && git config user.name 'BeeWork' && git config user.email 'beework.buzz@gmail.com'"))
 
-    # Set remote origin URL with embedded PAT so the agent can push without auth issues
     run_cmd(sb.exec("bash", "-c",
         f"cd {KB_DIR} && git remote set-url origin "
         f"https://$GITHUB_PAT@github.com/{OWNER}/{repo_name}.git"))
 
-    # Create web searches directory (outside knowledgebase so results aren't pushed)
+    # Write PROJECT.MD into the repo and commit as the initial content
+    with sb.open(f"{KB_DIR}/PROJECT.MD", "w") as f:
+        f.write(project_content)
+    run_cmd(sb.exec("bash", "-c",
+        f"cd {KB_DIR} && git add PROJECT.MD && "
+        f"git commit -m 'Add project requirements' && git push -u origin HEAD"),
+        show=True)
+
+    # Also place PROJECT.MD at the agent workdir so AGENTS.MD can reference it
+    with sb.open("/root/code/PROJECT.MD", "w") as f:
+        f.write(project_content)
+
     run_cmd(sb.exec("bash", "-c", f"mkdir -p {WEB_SEARCHES_DIR}"))
 
     # Run the agent from /root/code (where opencode.json, AGENTS.MD, tools/ live)
     # pty=True is required -- OpenCode hangs without a pseudo-terminal
     print("Running agent...")
     proc = sb.exec("bash", "-c",
-        f"opencode run {shlex.quote(prompt)}",
+        "opencode run 'Follow the instructions in AGENTS.md'",
         pty=True)
     for line in proc.stdout:
         print(line, end="")
@@ -157,9 +167,9 @@ def run(repo_name, prompt="Follow the instructions in AGENTS.md"):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("repo_name", help="Name for the new GitHub repository")
-    parser.add_argument("--prompt", default="Follow the instructions in AGENTS.md")
+    parser.add_argument("project_path", help="Path to the project requirements .md file")
     args = parser.parse_args()
-    run(args.repo_name, args.prompt)
+    run(args.repo_name, args.project_path)
 
 
 if __name__ == "__main__":

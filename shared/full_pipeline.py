@@ -2,7 +2,7 @@
 BeeWork full pipeline -- orchestrator -> parallel research -> parallel review.
 
 Usage:
-    uv run python shared/full_pipeline.py --repo <name> [--prompt "..."] [--max-parallel 3] [--start-from orchestrator|research|review]
+    uv run python shared/full_pipeline.py --repo <name> --project <path/to/requirements.md> [--max-parallel 3] [--start-from orchestrator|research|review]
 
 State is persisted to pipeline_runs/{repo_name}.json for resumability.
 Only "completed" tasks are skipped; pending, failed, and stale in_progress
@@ -76,12 +76,12 @@ def track_stage(state: dict, name: str):
 # Stage: orchestrator
 # ---------------------------------------------------------------------------
 
-def run_orchestrator(state: dict, prompt: str) -> None:
+def run_orchestrator(state: dict, project_path: str) -> None:
     with track_stage(state, "orchestrator") as stage:
         if stage is None:
             return
         from orchestrator.run_orchestrator_agent import run as orchestrate
-        tasks = orchestrate(state["repo_name"], prompt)
+        tasks = orchestrate(state["repo_name"], project_path)
         for task in tasks:
             task["research_agent_id"] = _topic_slug(task.get("topic", "unknown"))
         stage["result"] = {"research_tasks": tasks}
@@ -236,7 +236,7 @@ def run_review(state: dict, max_parallel: int) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
-def run_pipeline(repo_name: str, prompt: str, max_parallel: int, start_from: str) -> None:
+def run_pipeline(repo_name: str, project_path: str, max_parallel: int, start_from: str) -> None:
     missing = [v for v in REQUIRED_ENV_VARS if not os.environ.get(v)]
     if missing:
         raise EnvironmentError(f"Missing env vars: {', '.join(missing)}")
@@ -246,7 +246,7 @@ def run_pipeline(repo_name: str, prompt: str, max_parallel: int, start_from: str
 
     t0 = time.time()
     if start_from == "orchestrator":
-        run_orchestrator(state, prompt)
+        run_orchestrator(state, project_path)
     if start_from in ("orchestrator", "research"):
         run_research(state, max_parallel)
     run_review(state, max_parallel)
@@ -256,11 +256,11 @@ def run_pipeline(repo_name: str, prompt: str, max_parallel: int, start_from: str
 def main():
     parser = argparse.ArgumentParser(description="BeeWork full pipeline")
     parser.add_argument("--repo", required=True, help="GitHub repo name")
-    parser.add_argument("--prompt", default="Follow the instructions in AGENTS.md")
+    parser.add_argument("--project", required=True, help="Path to project requirements .md file")
     parser.add_argument("--max-parallel", type=int, default=3)
     parser.add_argument("--start-from", choices=STAGES, default="orchestrator")
     args = parser.parse_args()
-    run_pipeline(args.repo, args.prompt, args.max_parallel, args.start_from)
+    run_pipeline(args.repo, args.project, args.max_parallel, args.start_from)
 
 
 if __name__ == "__main__":
