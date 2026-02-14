@@ -8,6 +8,14 @@ The knowledgebase repo is at `knowledgebase/` in your working directory. This is
 The `GITHUB_PAT` environment variable contains a GitHub personal access token.
 Browser research results have already been collected and are available at `browser_agent_output/result.json`.
 
+## Citations
+
+For all substantive claims, you must include a citation to the URL it came from. The format should be `[citation number]` and at the bottom of the file, there should be a list of citations in the format:
+
+### Citations
+- `[citation number]: <url>`
+- ...
+
 ## Task
 
 Your goal is to contribute correct, verified, clear and low verbosity information to the knowledgebase.

@@ -16,9 +16,17 @@ Follow these steps:
 
 2. **Research**: Use `tools/search_web.py` to search for information relevant to the project. Perform multiple searches to get a comprehensive view of the space.
 
-3. **Create file structure**: Based on your research, create an organized file structure in `knowledgebase/` with markdown files as described in `PROJECT.MD`. Do not populate the files with detailed content -- just add a title and brief placeholder.
+3. **Create file structure**: Based on your research, create an organized file structure in `knowledgebase/` with markdown files. USe the file structure as described in `PROJECT.MD` as a rough blueprint, but don't be afraid to deviate from it if you find something interesting. Do not populate the files with detailed content -- just add a title and brief placeholder. Every folder should have a OVERVIEW.md file, which should be a summary of the folder's contents. Again, don't populate the OVERVIEW.md files with detailed content -- just add a title and brief placeholder.
 
-4. **Create research tasks**: For each file in the knowledge base, create research tasks using `tools/create_research_task.py`. Each task should target a **single file** and use a **different website** as its source. Follow the scope constraints in `PROJECT.MD` for how many tasks to create.
+4. **Create research tasks**: For each file in the knowledge base, create research tasks using `tools/create_research_task.py`. 
+
+Create research tasks: For each file in the knowledge base, create 2–10 separate research tasks. Each task should target the same file but cover a different subtopic and use a different website as its source. Do NOT create only one task per file — a single source produces shallow, one-sided content. For example, for a company file like knowledgebase/companies/socalgas.md, you would spawn separate agents that target the same file but use different websites as their source, or try to find different information on the same website:
+
+- Agent 1 (company's own site): --topic "SoCalGas overview" --websites "https://www.socalgas.com"
+- Agent 2 (regulator): --topic "SoCalGas regulatory filings" --websites "https://www.cpuc.ca.gov"
+- Agent 3 (news): --topic "SoCalGas RNG news" --websites "https://www.reuters.com"
+
+Follow the scope constraints in `PROJECT.MD` for how many tasks to create.
 
 ## Tools
 
