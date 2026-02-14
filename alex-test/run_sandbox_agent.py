@@ -1,7 +1,15 @@
 import os
+from pathlib import Path
+from dotenv import load_dotenv
 import modal
 
+# Load .env from repo root
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
 MINUTES = 60
+
+# All file paths relative to this script's directory
+AGENT_DIR = Path(__file__).parent
 
 # Container image: Debian + OpenCode + project files
 image = (
@@ -13,9 +21,7 @@ image = (
         "OPENCODE_DISABLE_AUTOUPDATE": "true",
         "OPENCODE_DISABLE_LSP_DOWNLOAD": "true",
     })
-    .add_local_file("hello.py", "/root/code/hello.py", copy=True)
-    .add_local_file("AGENTS.md", "/root/code/AGENTS.md", copy=True)
-    .add_local_file("opencode.json", "/root/code/opencode.json", copy=True)
+    .add_local_dir(str(AGENT_DIR), "/root/code", copy=True)
 )
 
 
