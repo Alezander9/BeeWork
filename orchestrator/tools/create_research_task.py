@@ -18,7 +18,7 @@ def sanitize_filename(topic):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Start a research agent to populate a knowledge base file."
+        description="Create a research task to populate a knowledge base file."
     )
     parser.add_argument("--topic", required=True, help="The topic of the research agent")
     parser.add_argument("--prompt", required=True, help="The prompt for the research agent")

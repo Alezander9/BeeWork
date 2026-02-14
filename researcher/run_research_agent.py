@@ -57,9 +57,11 @@ def run_cmd(proc, show=False):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", required=True, help="Task description for the agent")
+    parser.add_argument("--topic", required=True, help="Topic of the research task")
+    parser.add_argument("--prompt", required=True, help="Detailed instructions for the agent")
+    parser.add_argument("--file-path", required=True, help="Path of the KB file to edit")
+    parser.add_argument("--websites", required=True, help="Target website URL for research")
     parser.add_argument("--repo", required=True, help="Knowledgebase GitHub repo as owner/repo")
-    parser.add_argument("--website", help="Target website URL for the browsing agent")
     args = parser.parse_args()
 
     gemini_key = os.environ.get("GEMINI_API_KEY")
@@ -106,10 +108,14 @@ def main():
     run_cmd(sb.exec("bash", "-c",
         f"cd {KB_DIR} && git config user.name 'workerbee-gbt' && git config user.email 'beework.buzz@gmail.com'"))
 
-    # Build the prompt from task + optional website
-    prompt = f"Your task: {args.task}. Follow the instructions in AGENTS.md."
-    if args.website:
-        prompt += f"\nTarget website: {args.website}"
+    # Build the prompt from task fields
+    prompt = (
+        f"Topic: {args.topic}\n"
+        f"Your task: {args.prompt}\n"
+        f"Target file: {args.file_path}\n"
+        f"Target website: {args.websites}\n"
+        f"Follow the instructions in AGENTS.md."
+    )
 
     # Run agent with --format json for structured JSONL output
     # pty=True is required -- OpenCode hangs on Modal without a pseudo-terminal

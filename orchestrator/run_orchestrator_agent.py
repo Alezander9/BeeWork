@@ -139,7 +139,7 @@ def main():
     proc.wait()
     agent_rc = proc.returncode
 
-    # Collect research tasks created by start_research_agent.py
+    # Collect research tasks created by create_research_task.py
     research_tasks = []
     try:
         entries = sb.ls(RESEARCH_TASKS_DIR)
@@ -151,7 +151,7 @@ def main():
             task = json.loads(content)
             research_tasks.append(task)
     except Exception:
-        pass  # directory may not exist if no research agents were spawned
+        pass  # directory may not exist if no research tasks were created
 
     if research_tasks:
         print(f"\nCollected {len(research_tasks)} research task(s):")

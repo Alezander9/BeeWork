@@ -16,7 +16,7 @@ Follow these steps:
 
 2. **Create file structure**: Based on your research, create an organized file structure in `knowledgebase/` with markdown files for each company and topic. Do not populate the files with detailed content — just add a title and brief placeholder.
 
-3. **Spawn research agents**: For **each file** in the knowledge base, spawn **3–5 separate research agents** using `tools/start_research_agent.py`. Each agent should target the **same file** but cover a **different subtopic** and use a **different website** as its source. Do NOT spawn only one agent per file — a single source produces shallow, one-sided content. For example, for a company file like `knowledgebase/companies/socalgas.md`, you would spawn separate agents like:
+3. **Create research tasks**: For **each file** in the knowledge base, create **3–5 separate research tasks** using `tools/create_research_task.py`. Each task should target the **same file** but cover a **different subtopic** and use a **different website** as its source. Do NOT create only one task per file — a single source produces shallow, one-sided content. For example, for a company file like `knowledgebase/companies/socalgas.md`, you would create separate tasks like:
    - Agent 1 (company's own site): `--topic "SoCalGas overview" --websites "https://www.socalgas.com"`
    - Agent 2 (regulator): `--topic "SoCalGas regulatory filings" --websites "https://www.cpuc.ca.gov"`
    - Agent 3 (news): `--topic "SoCalGas RNG news" --websites "https://www.reuters.com"`
@@ -29,11 +29,11 @@ Usage: `python tools/search_web.py "<objective>" <filename>`
 
 Searches the web and saves results to `web_searches/<filename>`. The output directory is managed automatically — just provide a filename (e.g., `research.json`). Read the saved file to extract information for the knowledgebase.
 
-### start_research_agent.py
+### create_research_task.py
 
-Usage: `python tools/start_research_agent.py --topic "<topic>" --prompt "<prompt>" --file-path "<path>" --websites "<url>"`
+Usage: `python tools/create_research_task.py --topic "<topic>" --prompt "<prompt>" --file-path "<path>" --websites "<url>"`
 
-Starts a research agent to populate a specific file in the knowledge base.
+Creates a research task to populate a specific file in the knowledge base.
 
 - `--topic`: The topic for this agent (e.g., "SoCalGas renewable gas programs")
 - `--prompt`: Detailed instructions for what information the agent should find and write
