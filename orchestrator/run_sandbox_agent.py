@@ -6,25 +6,12 @@ from pathlib import Path
 from dotenv import load_dotenv
 import modal
 
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    try:
-        import tomllib
-    except ModuleNotFoundError:
-        import tomli as tomllib  # pip install tomli for Python <3.11
-
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 MINUTES = 60
 AGENT_DIR = Path(__file__).parent
 KB_DIR = "/root/code/knowledgebase"
 WEB_SEARCHES_DIR = "/root/code/web_searches"
-
-# Read sandbox Python dependencies from pyproject.toml
-with open(AGENT_DIR / "pyproject.toml", "rb") as f:
-    _pyproject = tomllib.load(f)
-SANDBOX_DEPS = _pyproject["project"]["dependencies"]
 
 # Container image: Debian + OpenCode + agent dir (AGENTS.MD, opencode.json, tools/)
 image = (
@@ -40,7 +27,7 @@ image = (
         "apt-get update && apt-get install -y gh",
     )
     .run_commands("curl -fsSL https://opencode.ai/install | bash")
-    .pip_install(*SANDBOX_DEPS)
+    .pip_install("requests", "python-dotenv")
     .env({
         "PATH": "/root/.opencode/bin:/usr/local/bin:/usr/bin:/bin",
         "OPENCODE_DISABLE_AUTOUPDATE": "true",
