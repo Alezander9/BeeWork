@@ -33,14 +33,14 @@ def parse_jsonl(proc):
         print(f"[unparsed] {buf[:200]}")
 
 
-def observe_agent_events(proc, model_id):
+def observe_agent_events(proc, model_id, agent_name="agent_run"):
     """Parse OpenCode JSONL stream and create Laminar spans for each event."""
     step_stack = []
     provider = model_id.split("/")[0] if "/" in model_id else "unknown"
 
     try:
         with Laminar.start_as_current_span(
-            name="agent_run", input={"model": model_id}, span_type="DEFAULT",
+            name=agent_name, input={"model": model_id}, span_type="DEFAULT",
         ):
             for event in parse_jsonl(proc):
                 etype = event.get("type")

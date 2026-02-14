@@ -2,7 +2,6 @@ import argparse
 import json
 import os
 import shlex
-import sys
 from pathlib import Path
 from dotenv import load_dotenv
 import modal
@@ -47,28 +46,25 @@ def run_cmd(proc, show=False):
     return proc.returncode
 
 
+OWNER = "workerbee-gbt"
+
+
 def run(repo_name, prompt="Follow the instructions in AGENTS.md"):
     """Run the orchestrator agent. Returns a list of research task dicts."""
-    anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not anthropic_api_key:
-        raise EnvironmentError("Set ANTHROPIC_API_KEY")
-    github_pat = os.environ.get("GITHUB_PAT")
-    if not github_pat:
-        raise EnvironmentError("Set GITHUB_PAT")
-    parallel_api_key = os.environ.get("PARALLEL_API_KEY")
-    if not parallel_api_key:
-        raise EnvironmentError("Set PARALLEL_API_KEY")
-    gemini_api_key = os.environ.get("GEMINI_API_KEY")
-    if not gemini_api_key:
-        raise EnvironmentError("Set GEMINI_API_KEY")
+    required = ["ANTHROPIC_API_KEY", "GITHUB_PAT", "PARALLEL_API_KEY", "GEMINI_API_KEY"]
+    missing = [k for k in required if not os.environ.get(k)]
+    if missing:
+        raise EnvironmentError(f"Missing env vars: {', '.join(missing)}")
+
+    github_pat = os.environ["GITHUB_PAT"]
 
     app = modal.App.lookup("test-opencode", create_if_missing=True)
     secret = modal.Secret.from_dict({
-        "ANTHROPIC_API_KEY": anthropic_api_key,
-        "GOOGLE_GENERATIVE_AI_API_KEY": gemini_api_key,
+        "ANTHROPIC_API_KEY": os.environ["ANTHROPIC_API_KEY"],
+        "GOOGLE_GENERATIVE_AI_API_KEY": os.environ["GEMINI_API_KEY"],
         "GITHUB_PAT": github_pat,
         "GH_TOKEN": github_pat,
-        "PARALLEL_API_KEY": parallel_api_key,
+        "PARALLEL_API_KEY": os.environ["PARALLEL_API_KEY"],
     })
 
     print(f"Creating sandbox...")
@@ -107,17 +103,13 @@ def run(repo_name, prompt="Follow the instructions in AGENTS.md"):
         sb.terminate()
         return []
 
-    # Configure git user in the knowledgebase repo so the agent can commit
     run_cmd(sb.exec("bash", "-c",
-        f"cd {KB_DIR} && git config user.name 'BeeWork Orchestrator' && git config user.email 'agent@beework.dev'"))
+        f"cd {KB_DIR} && git config user.name 'BeeWork' && git config user.email 'beework.buzz@gmail.com'"))
 
     # Set remote origin URL with embedded PAT so the agent can push without auth issues
-    remote_cmd = (
-        f"cd {KB_DIR} && "
-        f"GH_USER=$(gh api user --jq .login) && "
-        f"git remote set-url origin https://$GITHUB_PAT@github.com/$GH_USER/{repo_name}.git"
-    )
-    run_cmd(sb.exec("bash", "-c", remote_cmd))
+    run_cmd(sb.exec("bash", "-c",
+        f"cd {KB_DIR} && git remote set-url origin "
+        f"https://$GITHUB_PAT@github.com/{OWNER}/{repo_name}.git"))
 
     # Create web searches directory (outside knowledgebase so results aren't pushed)
     run_cmd(sb.exec("bash", "-c", f"mkdir -p {WEB_SEARCHES_DIR}"))
@@ -135,23 +127,16 @@ def run(repo_name, prompt="Follow the instructions in AGENTS.md"):
     agent_rc = proc.returncode
 
     # Collect research tasks created by create_research_task.py
-    research_tasks = []
-    try:
-        entries = sb.ls(RESEARCH_TASKS_DIR)
-        for entry in entries:
-            if not entry.path.endswith(".json"):
-                continue
-            with sb.open(f"{RESEARCH_TASKS_DIR}/{entry.path}", "r") as f:
-                content = f.read()
-            task = json.loads(content)
-            research_tasks.append(task)
-    except Exception:
-        pass  # directory may not exist if no research tasks were created
-
-    if research_tasks:
-        print(f"\nCollected {len(research_tasks)} research task(s):")
-        for t in research_tasks:
-            print(f"  - {t.get('topic', 'unknown')}: {t.get('file_path', '')}")
+    TASKS_FILE = "/tmp/all_tasks.json"
+    run_cmd(sb.exec("bash", "-c",
+        f"python3 -c \""
+        f"import json, glob; "
+        f"tasks = [json.load(open(f)) for f in sorted(glob.glob('{RESEARCH_TASKS_DIR}/*.json'))]; "
+        f"open('{TASKS_FILE}','w').write(json.dumps(tasks))"
+        f"\""))
+    with sb.open(TASKS_FILE, "r") as f:
+        research_tasks = json.loads(f.read())
+    print(f"Collected {len(research_tasks)} research task(s)")
 
     # Save the agent's work back to the repo
     print("Committing and pushing changes...")

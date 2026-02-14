@@ -90,7 +90,7 @@ def main():
     proc = sb.exec("bash", "-c",
         f"opencode run --format json {shlex.quote(prompt)}",
         pty=True)
-    rc = observe_agent_events(proc, MODEL_ID)
+    rc = observe_agent_events(proc, MODEL_ID, "chat")
 
     sb.terminate()
     print(f"exit code: {rc}")

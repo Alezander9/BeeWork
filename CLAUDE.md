@@ -93,3 +93,17 @@ All stored in `.env` at project root (see `.env.example`):
 | `ANTHROPIC_API_KEY` | Orchestrator (optional, for Claude models) |
 | `PARALLEL_API_KEY` | Orchestrator (web search) |
 | `BROWSER_USE_API_KEY` | Researcher (browser automation) |
+
+# Values: 
+We value clear and low verbosity code. 
+Code with conciseness and simplicity. 
+Avoid backwards compatability in favor of complete removal of the old in favor of the new.
+Avoid adding exessive catches, exception, and special case handling without good reason
+Code following Rob Pike's Go Principles:
+- Clear is better than clever
+- Delete code, don't comment it out or leave it
+- A little repition is better than a little dependancy
+- First make it work, then make it work right, then make it work fast
+
+# Account info
+The beework dedicated github account has username workerbee-gbt and email beework.buzz@gmail.com
