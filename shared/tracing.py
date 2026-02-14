@@ -33,15 +33,20 @@ def parse_jsonl(proc):
         print(f"[unparsed] {buf[:200]}")
 
 
-def observe_agent_events(proc, model_id, agent_name="agent_run"):
+def observe_agent_events(proc, model_id, agent_name="agent_run", metadata=None):
     """Parse OpenCode JSONL stream and create Laminar spans for each event."""
     step_stack = []
     provider = model_id.split("/")[0] if "/" in model_id else "unknown"
 
     try:
+        span_input = {"model": model_id}
+        if metadata:
+            span_input["metadata"] = metadata
         with Laminar.start_as_current_span(
-            name=agent_name, input={"model": model_id}, span_type="DEFAULT",
-        ):
+            name=agent_name, input=span_input, span_type="DEFAULT",
+        ) as span:
+            if metadata:
+                span.set_attributes({f"beework.{k}": v for k, v in metadata.items()})
             for event in parse_jsonl(proc):
                 etype = event.get("type")
                 part = event.get("part", {})

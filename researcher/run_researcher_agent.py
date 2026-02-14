@@ -57,7 +57,7 @@ def run_cmd(proc, show=False):
     return proc.returncode
 
 
-def run(topic, prompt, file_path, websites, repo):
+def run(topic, prompt, file_path, websites, repo, agent_id=None):
     """Run a researcher agent for a single research task."""
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if not gemini_key:
@@ -104,9 +104,9 @@ def run(topic, prompt, file_path, websites, repo):
         sb.terminate()
         raise RuntimeError(f"Failed to clone repo {repo}")
 
-    # Configure git user in the knowledgebase repo so the agent can commit
+    git_name = f"workerbee-{agent_id}" if agent_id else f"workerbee-{topic}"
     run_cmd(sb.exec("bash", "-c",
-        f"cd {KB_DIR} && git config user.name 'workerbee-{topic}' && git config user.email 'beework.buzz@gmail.com'"))
+        f"cd {KB_DIR} && git config user.name {shlex.quote(git_name)} && git config user.email 'beework.buzz@gmail.com'"))
 
     # --- Step 3: Write browser results into sandbox ---
     # Use base64 to safely transfer JSON that may contain special characters
@@ -131,7 +131,8 @@ def run(topic, prompt, file_path, websites, repo):
     proc = sb.exec("bash", "-c",
         f"opencode run --format json {shlex.quote(agent_prompt)}",
         pty=True)
-    rc = observe_agent_events(proc, MODEL_ID, "researcher")
+    trace_meta = {"research_agent_id": agent_id, "topic": topic} if agent_id else {}
+    rc = observe_agent_events(proc, MODEL_ID, "researcher", metadata=trace_meta)
 
     # Capture the PR number created by the agent
     pr_proc = sb.exec("bash", "-c",
