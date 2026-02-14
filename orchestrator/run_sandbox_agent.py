@@ -139,8 +139,20 @@ def main():
         print(line, end="")
 
     proc.wait()
+    agent_rc = proc.returncode
+
+    # Save the agent's work back to the repo
+    print("Committing and pushing changes...")
+    push_rc = run(sb.exec("bash", "-c",
+        f"cd {KB_DIR} && git add -A && "
+        f"git diff --cached --quiet || "
+        f"(git commit -m 'Agent run' && git push)"),
+        show=True)
+    if push_rc != 0:
+        print("Warning: failed to push changes")
+
     sb.terminate()
-    print(f"exit code: {proc.returncode}")
+    print(f"exit code: {agent_rc}")
 
 
 if __name__ == "__main__":
