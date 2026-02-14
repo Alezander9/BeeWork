@@ -20,6 +20,7 @@ Read the target file in `knowledgebase/` and any important files it references (
 ### Step 2: Start browser agent
 Run: `python tools/start_browser_agent.py --task "your specific research question" --website "optional starting url"`
 This will launch a browser agent that researches the web. Wait for it to finish.
+**Important:** This script can take up to 10 minutes. Set your bash timeout to at least 660000 (11 minutes) when running it.
 
 ### Step 3: Read results
 The browser agent writes its output to `browser_agent_output/result.json`. Read this file. The `output` field contains the agent's findings with citations. The `steps` array shows each page visited with URLs and what was learned.

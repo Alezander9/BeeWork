@@ -21,7 +21,7 @@ KB_DIR = "/root/code/knowledgebase"
 OPENCODE_CONFIG = json.loads((AGENT_DIR / "opencode.json").read_text())
 MODEL_ID = OPENCODE_CONFIG.get("agent", {}).get("build", {}).get("model", "unknown")
 
-# Container image: Debian + OpenCode + agent dir (AGENTS.MD, opencode.json, tools/)
+# Container image: Debian + OpenCode + gh CLI + agent dir
 image = (
     modal.Image.debian_slim()
     .apt_install("curl", "git")
@@ -35,7 +35,6 @@ image = (
         "apt-get update && apt-get install -y gh",
     )
     .run_commands("curl -fsSL https://opencode.ai/install | bash")
-    .pip_install("requests")
     .env({
         "PATH": "/root/.opencode/bin:/usr/local/bin:/usr/bin:/bin",
         "OPENCODE_DISABLE_AUTOUPDATE": "true",
@@ -57,9 +56,8 @@ def run_cmd(proc, show=False):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", required=True, help="Task description for the agent")
     parser.add_argument("--repo", required=True, help="Knowledgebase GitHub repo as owner/repo")
-    parser.add_argument("--website", help="Target website URL for the browsing agent")
+    parser.add_argument("--pr", required=True, type=int, help="PR number to review")
     args = parser.parse_args()
 
     gemini_key = os.environ.get("GEMINI_API_KEY")
@@ -68,21 +66,17 @@ def main():
     github_pat = os.environ.get("GITHUB_PAT")
     if not github_pat:
         raise EnvironmentError("Set GITHUB_PAT")
-    browser_use_key = os.environ.get("BROWSER_USE_API_KEY")
-    if not browser_use_key:
-        raise EnvironmentError("Set BROWSER_USE_API_KEY")
     lmnr_key = os.environ.get("LMNR_PROJECT_API_KEY")
     if not lmnr_key:
         raise EnvironmentError("Set LMNR_PROJECT_API_KEY")
 
     Laminar.initialize(project_api_key=lmnr_key)
 
-    app = modal.App.lookup("beework-worker", create_if_missing=True)
+    app = modal.App.lookup("beework-reviewer", create_if_missing=True)
     secret = modal.Secret.from_dict({
         "GOOGLE_GENERATIVE_AI_API_KEY": gemini_key,
         "GITHUB_PAT": github_pat,
         "GH_TOKEN": github_pat,
-        "BROWSER_USE_API_KEY": browser_use_key,
     })
 
     print(f"Creating sandbox...")
@@ -90,7 +84,7 @@ def main():
         sb = modal.Sandbox.create(
             "sleep", "infinity",
             image=image, secrets=[secret], app=app,
-            workdir="/root/code", timeout=15 * MINUTES,
+            workdir="/root/code", timeout=5 * MINUTES,
         )
 
     # Clone the knowledgebase repo
@@ -102,18 +96,10 @@ def main():
         sb.terminate()
         return
 
-    # Configure git user in the knowledgebase repo so the agent can commit
-    run_cmd(sb.exec("bash", "-c",
-        f"cd {KB_DIR} && git config user.name 'workerbee-gbt' && git config user.email 'beework.buzz@gmail.com'"))
-
-    # Build the prompt from task + optional website
-    prompt = f"Your task: {args.task}. Follow the instructions in AGENTS.md."
-    if args.website:
-        prompt += f"\nTarget website: {args.website}"
-
     # Run agent with --format json for structured JSONL output
     # pty=True is required -- OpenCode hangs on Modal without a pseudo-terminal
-    print(f"Running agent (model: {MODEL_ID})...")
+    prompt = f"Review PR #{args.pr} on repo {args.repo}. Follow the instructions in AGENTS.md."
+    print(f"Running agent (model: {MODEL_ID}), reviewing PR #{args.pr}...")
     proc = sb.exec("bash", "-c",
         f"opencode run --format json {shlex.quote(prompt)}",
         pty=True)
