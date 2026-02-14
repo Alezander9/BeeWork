@@ -19,6 +19,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 MINUTES = 60
 AGENT_DIR = Path(__file__).parent
 KB_DIR = "/root/code/knowledgebase"
+WEB_SEARCHES_DIR = "/root/code/web_searches"
 
 # Read sandbox Python dependencies from pyproject.toml
 with open(AGENT_DIR / "pyproject.toml", "rb") as f:
@@ -28,7 +29,7 @@ SANDBOX_DEPS = _pyproject["project"]["dependencies"]
 # Container image: Debian + OpenCode + agent dir (AGENTS.MD, opencode.json, tools/)
 image = (
     modal.Image.debian_slim()
-    .apt_install("curl", "git")
+    .apt_install("curl", "git", "tree")
     .run_commands(
         "curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg "
         "| dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg",
@@ -63,8 +64,8 @@ def main():
     parser.add_argument("--prompt", default="Follow the instructions in AGENTS.md")
     args = parser.parse_args()
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
+    anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not anthropic_api_key:
         raise EnvironmentError("Set ANTHROPIC_API_KEY")
     github_pat = os.environ.get("GITHUB_PAT")
     if not github_pat:
@@ -72,10 +73,14 @@ def main():
     parallel_api_key = os.environ.get("PARALLEL_API_KEY")
     if not parallel_api_key:
         raise EnvironmentError("Set PARALLEL_API_KEY")
+    gemini_api_key = os.environ.get("GEMINI_API_KEY")
+    if not gemini_api_key:
+        raise EnvironmentError("Set GEMINI_API_KEY")
 
     app = modal.App.lookup("test-opencode", create_if_missing=True)
     secret = modal.Secret.from_dict({
-        "ANTHROPIC_API_KEY": api_key,
+        "ANTHROPIC_API_KEY": anthropic_api_key,
+        "GOOGLE_GENERATIVE_AI_API_KEY": gemini_api_key,
         "GITHUB_PAT": github_pat,
         "GH_TOKEN": github_pat,
         "PARALLEL_API_KEY": parallel_api_key,
@@ -86,30 +91,31 @@ def main():
         sb = modal.Sandbox.create(
             "sleep", "infinity",
             image=image, secrets=[secret], app=app,
-            workdir="/root/code", timeout=5 * MINUTES,
+            workdir="/root/code", timeout=10 * MINUTES,
         )
 
     # Check if the repo already exists, create if not, then clone
-    repo_name = shlex.quote(args.repo_name)
+    repo_name = args.repo_name
+    safe_repo_name = shlex.quote(repo_name)
 
     # gh repo view will succeed if the repo exists under the authenticated user
-    check_rc = run(sb.exec("bash", "-c", f"gh repo view {repo_name} --json name"), show=False)
+    check_rc = run(sb.exec("bash", "-c", f"gh repo view {safe_repo_name} --json name"), show=False)
 
     if check_rc == 0:
         # Repo exists — just clone it
         print(f"Repo '{args.repo_name}' already exists, cloning...")
         rc = run(sb.exec("bash", "-c",
-            f"gh repo clone {repo_name} {KB_DIR}"
+            f"gh repo clone {safe_repo_name} {KB_DIR}"
         ), show=True)
     else:
         # Repo doesn't exist — create and clone
         print(f"Creating new GitHub repo '{args.repo_name}'...")
         create_cmd = (
-            f"gh repo create {repo_name} --public --clone "
+            f"gh repo create {safe_repo_name} --public --clone "
             f"--description 'Created by BeeWork Agent'"
         )
         rc = run(sb.exec("bash", "-c",
-            f"cd /root && {create_cmd} && mv {repo_name} {KB_DIR}"
+            f"cd /root && {create_cmd} && mv {safe_repo_name} {KB_DIR}"
         ), show=True)
 
     if rc != 0:
@@ -129,6 +135,9 @@ def main():
     )
     run(sb.exec("bash", "-c", remote_cmd))
 
+    # Create web searches directory (outside knowledgebase so results aren't pushed)
+    run(sb.exec("bash", "-c", f"mkdir -p {WEB_SEARCHES_DIR}"))
+
     # Run the agent from /root/code (where opencode.json, AGENTS.MD, tools/ live)
     # pty=True is required -- OpenCode hangs without a pseudo-terminal
     print("Running agent...")
@@ -146,7 +155,7 @@ def main():
     push_rc = run(sb.exec("bash", "-c",
         f"cd {KB_DIR} && git add -A && "
         f"git diff --cached --quiet || "
-        f"(git commit -m 'Agent run' && git push)"),
+        f"(git commit -m 'Agent run' && git push -u origin HEAD)"),
         show=True)
     if push_rc != 0:
         print("Warning: failed to push changes")

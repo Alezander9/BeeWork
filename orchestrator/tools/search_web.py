@@ -23,12 +23,14 @@ def search_web(objective: str) -> str:
     response.raise_for_status()
     return response.json()
 
+WEB_SEARCHES_DIR = "/root/code/web_searches"
+
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python search_web.py <objective> <output_filename>")
+        print("Usage: python tools/search_web.py <objective> <filename>")
         sys.exit(1)
     result = search_web(sys.argv[1])
-    filename = sys.argv[2]
-    with open(filename, "w") as f:
+    filepath = os.path.join(WEB_SEARCHES_DIR, sys.argv[2])
+    with open(filepath, "w") as f:
         f.write(json.dumps(result, indent=2))
-    print(f"Results written to {filename}")
+    print(f"Results written to {filepath}")
