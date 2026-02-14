@@ -54,7 +54,7 @@ def run_cmd(proc, show=False):
     return proc.returncode
 
 
-def run(repo, pr):
+def run(repo, pr, agent_id=None):
     """Run a reviewer agent for a single PR. Called by pipeline or CLI."""
     required = ["GEMINI_API_KEY", "GITHUB_PAT", "LMNR_PROJECT_API_KEY"]
     missing = [k for k in required if not os.environ.get(k)]
@@ -91,7 +91,8 @@ def run(repo, pr):
     proc = sb.exec("bash", "-c",
         f"opencode run --format json {shlex.quote(prompt)}",
         pty=True)
-    rc = observe_agent_events(proc, MODEL_ID, "reviewer")
+    trace_meta = {"research_agent_id": agent_id, "pr": pr} if agent_id else {}
+    rc = observe_agent_events(proc, MODEL_ID, "reviewer", metadata=trace_meta)
 
     sb.terminate()
     print(f"exit code: {rc}")

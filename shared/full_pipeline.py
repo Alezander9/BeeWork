@@ -2,7 +2,7 @@
 BeeWork full pipeline -- orchestrator -> parallel research -> parallel review.
 
 Usage:
-    uv run python shared/full_pipeline.py --repo <name> [--prompt "..."] [--max-parallel 3] [--start-from orchestrator|research|review]
+    uv run python shared/full_pipeline.py --repo <name> --project <path/to/requirements.md> [--max-parallel 3] [--start-from orchestrator|research|review]
 
 State is persisted to pipeline_runs/{repo_name}.json for resumability.
 Only "completed" tasks are skipped; pending, failed, and stale in_progress
@@ -76,12 +76,14 @@ def track_stage(state: dict, name: str):
 # Stage: orchestrator
 # ---------------------------------------------------------------------------
 
-def run_orchestrator(state: dict, prompt: str) -> None:
+def run_orchestrator(state: dict, project_path: str) -> None:
     with track_stage(state, "orchestrator") as stage:
         if stage is None:
             return
         from orchestrator.run_orchestrator_agent import run as orchestrate
-        tasks = orchestrate(state["repo_name"], prompt)
+        tasks = orchestrate(state["repo_name"], project_path)
+        for task in tasks:
+            task["research_agent_id"] = _topic_slug(task.get("topic", "unknown"))
         stage["result"] = {"research_tasks": tasks}
         print(f"[orchestrator] Done -- {len(tasks)} research task(s) created.")
 
@@ -102,6 +104,7 @@ def _run_single_research(task: dict, full_repo: str) -> int | None:
         file_path=task["file_path"],
         websites=task["websites"],
         repo=full_repo,
+        agent_id=task.get("research_agent_id"),
     )
 
 
@@ -144,7 +147,7 @@ def run_research(state: dict, max_parallel: int) -> None:
             slug = futures[future]
             try:
                 pr_number = future.result()
-                stage["tasks"][slug] = {"status": "completed", "pr": pr_number}
+                stage["tasks"][slug] = {"status": "completed", "pr": pr_number, "research_agent_id": slug}
                 print(f"[research] Completed: {slug} (PR #{pr_number})")
             except Exception as exc:
                 stage["tasks"][slug] = {"status": "failed", "error": str(exc)}
@@ -163,17 +166,18 @@ def run_research(state: dict, max_parallel: int) -> None:
 # Stage: review (parallel)
 # ---------------------------------------------------------------------------
 
-def _run_single_review(repo: str, pr: int) -> None:
+def _run_single_review(repo: str, pr: int, agent_id: str = None) -> None:
     from reviewer.run_reviewer_agent import run as review
-    review(repo=repo, pr=pr)
+    review(repo=repo, pr=pr, agent_id=agent_id)
 
 
 def run_review(state: dict, max_parallel: int) -> None:
     research_stage = state["stages"].get("research", {})
     research_tasks = research_stage.get("tasks", {})
 
-    # Collect PRs from completed research tasks
-    pr_tasks = {slug: t["pr"] for slug, t in research_tasks.items()
+    # Collect PRs and agent IDs from completed research tasks
+    pr_tasks = {slug: {"pr": t["pr"], "agent_id": t.get("research_agent_id", slug)}
+                for slug, t in research_tasks.items()
                 if t.get("status") == "completed" and t.get("pr")}
     if not pr_tasks:
         print("[review] No PRs to review.")
@@ -187,12 +191,12 @@ def run_review(state: dict, max_parallel: int) -> None:
 
     # Build work list -- skip completed reviews
     work = []
-    for slug, pr in pr_tasks.items():
+    for slug, info in pr_tasks.items():
         if stage["tasks"].get(slug, {}).get("status") == "completed":
             print(f"[review] Skipping completed: {slug}")
             continue
-        stage["tasks"].setdefault(slug, {"status": "pending", "pr": pr})
-        work.append((slug, pr))
+        stage["tasks"].setdefault(slug, {"status": "pending", "pr": info["pr"], "research_agent_id": info["agent_id"]})
+        work.append((slug, info["pr"], info["agent_id"]))
 
     if not work:
         print("[review] All reviews already completed.")
@@ -204,10 +208,10 @@ def run_review(state: dict, max_parallel: int) -> None:
 
     with ThreadPoolExecutor(max_workers=max_parallel) as pool:
         futures = {}
-        for slug, pr in work:
+        for slug, pr, agent_id in work:
             stage["tasks"][slug]["status"] = "in_progress"
             save_state(state)
-            futures[pool.submit(_run_single_review, full_repo, pr)] = slug
+            futures[pool.submit(_run_single_review, full_repo, pr, agent_id)] = slug
 
         for future in as_completed(futures):
             slug = futures[future]
@@ -232,7 +236,7 @@ def run_review(state: dict, max_parallel: int) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
-def run_pipeline(repo_name: str, prompt: str, max_parallel: int, start_from: str) -> None:
+def run_pipeline(repo_name: str, project_path: str, max_parallel: int, start_from: str) -> None:
     missing = [v for v in REQUIRED_ENV_VARS if not os.environ.get(v)]
     if missing:
         raise EnvironmentError(f"Missing env vars: {', '.join(missing)}")
@@ -242,7 +246,7 @@ def run_pipeline(repo_name: str, prompt: str, max_parallel: int, start_from: str
 
     t0 = time.time()
     if start_from == "orchestrator":
-        run_orchestrator(state, prompt)
+        run_orchestrator(state, project_path)
     if start_from in ("orchestrator", "research"):
         run_research(state, max_parallel)
     run_review(state, max_parallel)
@@ -252,11 +256,11 @@ def run_pipeline(repo_name: str, prompt: str, max_parallel: int, start_from: str
 def main():
     parser = argparse.ArgumentParser(description="BeeWork full pipeline")
     parser.add_argument("--repo", required=True, help="GitHub repo name")
-    parser.add_argument("--prompt", default="Follow the instructions in AGENTS.md")
+    parser.add_argument("--project", required=True, help="Path to project requirements .md file")
     parser.add_argument("--max-parallel", type=int, default=3)
     parser.add_argument("--start-from", choices=STAGES, default="orchestrator")
     args = parser.parse_args()
-    run_pipeline(args.repo, args.prompt, args.max_parallel, args.start_from)
+    run_pipeline(args.repo, args.project, args.max_parallel, args.start_from)
 
 
 if __name__ == "__main__":
