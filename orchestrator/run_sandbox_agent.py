@@ -121,6 +121,14 @@ def main():
     run(sb.exec("bash", "-c",
         f"cd {KB_DIR} && git config user.name 'BeeWork Orchestrator' && git config user.email 'agent@beework.dev'"))
 
+    # Set remote origin URL with embedded PAT so the agent can push without auth issues
+    remote_cmd = (
+        f"cd {KB_DIR} && "
+        f"GH_USER=$(gh api user --jq .login) && "
+        f"git remote set-url origin https://$GITHUB_PAT@github.com/$GH_USER/{repo_name}.git"
+    )
+    run(sb.exec("bash", "-c", remote_cmd))
+
     # Run the agent from /root/code (where opencode.json, AGENTS.MD, tools/ live)
     # pty=True is required -- OpenCode hangs without a pseudo-terminal
     print("Running agent...")
