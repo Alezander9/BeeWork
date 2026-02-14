@@ -25,7 +25,17 @@ MODEL_ID = OPENCODE_CONFIG.get("agent", {}).get("build", {}).get("model", "unkno
 image = (
     modal.Image.debian_slim()
     .apt_install("curl", "git")
+    .run_commands(
+        "curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg "
+        "| dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg",
+        'echo "deb [arch=$(dpkg --print-architecture) '
+        'signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] '
+        'https://cli.github.com/packages stable main" '
+        '| tee /etc/apt/sources.list.d/github-cli.list > /dev/null',
+        "apt-get update && apt-get install -y gh",
+    )
     .run_commands("curl -fsSL https://opencode.ai/install | bash")
+    .pip_install("requests")
     .env({
         "PATH": "/root/.opencode/bin:/usr/local/bin:/usr/bin:/bin",
         "OPENCODE_DISABLE_AUTOUPDATE": "true",
@@ -47,26 +57,32 @@ def run_cmd(proc, show=False):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("repo", help="Knowledgebase GitHub repo as owner/repo")
-    parser.add_argument("--prompt", default="Follow the instructions in AGENTS.md")
+    parser.add_argument("--task", required=True, help="Task description for the agent")
+    parser.add_argument("--repo", required=True, help="Knowledgebase GitHub repo as owner/repo")
+    parser.add_argument("--website", help="Target website URL for the browsing agent")
     args = parser.parse_args()
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise EnvironmentError("Set ANTHROPIC_API_KEY")
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    if not gemini_key:
+        raise EnvironmentError("Set GEMINI_API_KEY")
     github_pat = os.environ.get("GITHUB_PAT")
     if not github_pat:
         raise EnvironmentError("Set GITHUB_PAT")
+    browser_use_key = os.environ.get("BROWSER_USE_API_KEY")
+    if not browser_use_key:
+        raise EnvironmentError("Set BROWSER_USE_API_KEY")
     lmnr_key = os.environ.get("LMNR_PROJECT_API_KEY")
     if not lmnr_key:
         raise EnvironmentError("Set LMNR_PROJECT_API_KEY")
 
     Laminar.initialize(project_api_key=lmnr_key)
 
-    app = modal.App.lookup("test-opencode", create_if_missing=True)
+    app = modal.App.lookup("beework-worker", create_if_missing=True)
     secret = modal.Secret.from_dict({
-        "ANTHROPIC_API_KEY": api_key,
+        "GOOGLE_GENERATIVE_AI_API_KEY": gemini_key,
         "GITHUB_PAT": github_pat,
+        "GH_TOKEN": github_pat,
+        "BROWSER_USE_API_KEY": browser_use_key,
     })
 
     print(f"Creating sandbox...")
@@ -89,12 +105,17 @@ def main():
     # Configure git user in the knowledgebase repo so the agent can commit
     run_cmd(sb.exec("bash", "-c",
         f"cd {KB_DIR} && git config user.name 'workerbee-gbt' && git config user.email 'beework.buzz@gmail.com'"))
-        
+
+    # Build the prompt from task + optional website
+    prompt = f"Your task: {args.task}. Follow the instructions in AGENTS.md."
+    if args.website:
+        prompt += f"\nTarget website: {args.website}"
+
     # Run agent with --format json for structured JSONL output
     # pty=True is required -- OpenCode hangs on Modal without a pseudo-terminal
     print(f"Running agent (model: {MODEL_ID})...")
     proc = sb.exec("bash", "-c",
-        f"opencode run --format json {shlex.quote(args.prompt)}",
+        f"opencode run --format json {shlex.quote(prompt)}",
         pty=True)
     rc = observe_agent_events(proc, MODEL_ID)
 

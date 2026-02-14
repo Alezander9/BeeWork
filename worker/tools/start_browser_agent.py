@@ -1,0 +1,108 @@
+import argparse
+import json
+import os
+import time
+from pathlib import Path
+
+import requests
+
+BASE_URL = "https://api.browser-use.com/api/v2"
+SCRIPT_DIR = Path(__file__).resolve().parent
+OUTPUT_DIR = SCRIPT_DIR.parent / "browser_agent_output"
+OUTPUT_FILE = OUTPUT_DIR / "result.json"
+POLL_INTERVAL = 5
+
+
+def headers():
+    return {
+        "X-Browser-Use-API-Key": os.environ["BROWSER_USE_API_KEY"],
+        "Content-Type": "application/json",
+    }
+
+
+def create_session():
+    resp = requests.post(f"{BASE_URL}/sessions", json={"keepAlive": False}, headers=headers())
+    resp.raise_for_status()
+    return resp.json()
+
+
+CITATION_PROMPT = (
+    " IMPORTANT: For every piece of information you find, record the exact URL "
+    "of the page where you found it. In your memory, always note [source: URL] "
+    "next to each fact. In your final output, include a Citations section that "
+    "maps each claim to its source URL."
+)
+
+
+def create_task(session_id, task, website=None):
+    payload = {
+        "task": task + CITATION_PROMPT,
+        "sessionId": session_id,
+        "llm": "browser-use-2.0",
+        "maxSteps": 25,
+        "judge": True,
+    }
+    if website:
+        payload["startUrl"] = website
+    resp = requests.post(f"{BASE_URL}/tasks", json=payload, headers=headers())
+    resp.raise_for_status()
+    return resp.json()
+
+
+def poll_task(task_id):
+    while True:
+        resp = requests.get(f"{BASE_URL}/tasks/{task_id}", headers=headers())
+        resp.raise_for_status()
+        task = resp.json()
+        status = task.get("status")
+        steps = task.get("steps", [])
+        print(f"[poll] status={status} steps={len(steps)}")
+        if status in ("finished", "stopped"):
+            return task
+        time.sleep(POLL_INTERVAL)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Start a browser-use agent for web research")
+    parser.add_argument("--task", required=True, help="Task description for the browser agent")
+    parser.add_argument("--website", help="Target website URL to start browsing from")
+    args = parser.parse_args()
+
+    # Create session to get the live URL
+    session = create_session()
+    session_id = session["id"]
+    live_url = session.get("liveUrl")
+    print(f"Session: {session_id}")
+    if live_url:
+        print(f"Live URL: {live_url}")
+
+    # Start the task in the session
+    task_resp = create_task(session_id, args.task, args.website)
+    task_id = task_resp["id"]
+    print(f"Task: {task_id}")
+
+    # Poll until done
+    result = poll_task(task_id)
+
+    # Strip fields the OpenCode agent doesn't need
+    for key in ("id", "sessionId", "llm"):
+        result.pop(key, None)
+    for step in result.get("steps", []):
+        for key in ("evaluationPreviousGoal", "nextGoal"):
+            step.pop(key, None)
+
+    # Dump results to a fixed, predictable path
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    OUTPUT_FILE.write_text(json.dumps(result, indent=2))
+    print(f"Results written to {OUTPUT_FILE}")
+
+    output = result.get("output")
+    if output:
+        print(f"Output: {output}")
+    verdict = result.get("judgeVerdict")
+    if verdict is not None:
+        print(f"Judge verdict: {verdict}")
+
+
+if __name__ == "__main__":
+    main()
