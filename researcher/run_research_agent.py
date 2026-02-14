@@ -131,7 +131,7 @@ def run(topic, prompt, file_path, websites, repo):
     proc = sb.exec("bash", "-c",
         f"opencode run --format json {shlex.quote(agent_prompt)}",
         pty=True)
-    rc = observe_agent_events(proc, MODEL_ID)
+    rc = observe_agent_events(proc, MODEL_ID, "researcher")
 
     sb.terminate()
     print(f"exit code: {rc}")
