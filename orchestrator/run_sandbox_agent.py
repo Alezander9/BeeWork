@@ -119,7 +119,7 @@ def main():
 
     # Configure git user in the knowledgebase repo so the agent can commit
     run(sb.exec("bash", "-c",
-        f"cd {KB_DIR} && git config user.name 'BeeWork Agent' && git config user.email 'agent@beework.dev'"))
+        f"cd {KB_DIR} && git config user.name 'BeeWork Orchestrator' && git config user.email 'agent@beework.dev'"))
 
     # Run the agent from /root/code (where opencode.json, AGENTS.MD, tools/ live)
     # pty=True is required -- OpenCode hangs without a pseudo-terminal
