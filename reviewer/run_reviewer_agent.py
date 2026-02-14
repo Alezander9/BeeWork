@@ -54,27 +54,19 @@ def run_cmd(proc, show=False):
     return proc.returncode
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--repo", required=True, help="Knowledgebase GitHub repo as owner/repo")
-    parser.add_argument("--pr", required=True, type=int, help="PR number to review")
-    args = parser.parse_args()
+def run(repo, pr):
+    """Run a reviewer agent for a single PR. Called by pipeline or CLI."""
+    required = ["GEMINI_API_KEY", "GITHUB_PAT", "LMNR_PROJECT_API_KEY"]
+    missing = [k for k in required if not os.environ.get(k)]
+    if missing:
+        raise EnvironmentError(f"Missing env vars: {', '.join(missing)}")
 
-    gemini_key = os.environ.get("GEMINI_API_KEY")
-    if not gemini_key:
-        raise EnvironmentError("Set GEMINI_API_KEY")
-    github_pat = os.environ.get("GITHUB_PAT")
-    if not github_pat:
-        raise EnvironmentError("Set GITHUB_PAT")
-    lmnr_key = os.environ.get("LMNR_PROJECT_API_KEY")
-    if not lmnr_key:
-        raise EnvironmentError("Set LMNR_PROJECT_API_KEY")
-
-    Laminar.initialize(project_api_key=lmnr_key)
+    github_pat = os.environ["GITHUB_PAT"]
+    Laminar.initialize(project_api_key=os.environ["LMNR_PROJECT_API_KEY"])
 
     app = modal.App.lookup("beework-reviewer", create_if_missing=True)
     secret = modal.Secret.from_dict({
-        "GOOGLE_GENERATIVE_AI_API_KEY": gemini_key,
+        "GOOGLE_GENERATIVE_AI_API_KEY": os.environ["GEMINI_API_KEY"],
         "GITHUB_PAT": github_pat,
         "GH_TOKEN": github_pat,
     })
@@ -87,19 +79,15 @@ def main():
             workdir="/root/code", timeout=5 * MINUTES,
         )
 
-    # Clone the knowledgebase repo
-    clone_url = f"https://x-access-token:$GITHUB_PAT@github.com/{args.repo}.git"
-    print(f"Cloning {args.repo} into {KB_DIR}...")
+    clone_url = f"https://x-access-token:$GITHUB_PAT@github.com/{repo}.git"
+    print(f"Cloning {repo} into {KB_DIR}...")
     rc = run_cmd(sb.exec("bash", "-c", f"git clone {clone_url} {KB_DIR}"), show=True)
     if rc != 0:
-        print("Failed to clone repo")
         sb.terminate()
-        return
+        raise RuntimeError(f"Failed to clone repo {repo}")
 
-    # Run agent with --format json for structured JSONL output
-    # pty=True is required -- OpenCode hangs on Modal without a pseudo-terminal
-    prompt = f"Review PR #{args.pr} on repo {args.repo}. Follow the instructions in AGENTS.md."
-    print(f"Running agent (model: {MODEL_ID}), reviewing PR #{args.pr}...")
+    prompt = f"Review PR #{pr} on repo {repo}. Follow the instructions in AGENTS.md."
+    print(f"Running agent (model: {MODEL_ID}), reviewing PR #{pr}...")
     proc = sb.exec("bash", "-c",
         f"opencode run --format json {shlex.quote(prompt)}",
         pty=True)
@@ -107,6 +95,14 @@ def main():
 
     sb.terminate()
     print(f"exit code: {rc}")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--repo", required=True)
+    parser.add_argument("--pr", required=True, type=int)
+    args = parser.parse_args()
+    run(args.repo, args.pr)
 
 
 if __name__ == "__main__":

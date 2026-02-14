@@ -1,8 +1,8 @@
 """
-BeeWork full pipeline -- runs orchestrator then parallel researcher agents.
+BeeWork full pipeline -- orchestrator -> parallel research -> parallel review.
 
 Usage:
-    uv run python shared/full_pipeline.py --repo <name> [--prompt "..."] [--max-parallel 3] [--start-from orchestrator|research]
+    uv run python shared/full_pipeline.py --repo <name> [--prompt "..."] [--max-parallel 3] [--start-from orchestrator|research|review]
 
 State is persisted to pipeline_runs/{repo_name}.json for resumability.
 Only "completed" tasks are skipped; pending, failed, and stale in_progress
@@ -27,7 +27,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 OWNER = "workerbee-gbt"
 PIPELINE_DIR = PROJECT_ROOT / "pipeline_runs"
-STAGES = ["orchestrator", "research"]
+STAGES = ["orchestrator", "research", "review"]
 
 REQUIRED_ENV_VARS = [
     "GEMINI_API_KEY",
@@ -94,9 +94,9 @@ def _topic_slug(topic: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", topic.lower()).strip("-")
 
 
-def _run_single_research(task: dict, full_repo: str) -> None:
+def _run_single_research(task: dict, full_repo: str) -> int | None:
     from researcher.run_researcher_agent import run as research
-    research(
+    return research(
         topic=task["topic"],
         prompt=task["prompt"],
         file_path=task["file_path"],
@@ -143,9 +143,9 @@ def run_research(state: dict, max_parallel: int) -> None:
         for future in as_completed(futures):
             slug = futures[future]
             try:
-                future.result()
-                stage["tasks"][slug] = {"status": "completed"}
-                print(f"[research] Completed: {slug}")
+                pr_number = future.result()
+                stage["tasks"][slug] = {"status": "completed", "pr": pr_number}
+                print(f"[research] Completed: {slug} (PR #{pr_number})")
             except Exception as exc:
                 stage["tasks"][slug] = {"status": "failed", "error": str(exc)}
                 print(f"[research] Failed: {slug} -- {exc}")
@@ -157,6 +157,75 @@ def run_research(state: dict, max_parallel: int) -> None:
 
     done = sum(1 for t in stage["tasks"].values() if t["status"] == "completed")
     print(f"[research] Finished: {done}/{len(stage['tasks'])} tasks completed.")
+
+
+# ---------------------------------------------------------------------------
+# Stage: review (parallel)
+# ---------------------------------------------------------------------------
+
+def _run_single_review(repo: str, pr: int) -> None:
+    from reviewer.run_reviewer_agent import run as review
+    review(repo=repo, pr=pr)
+
+
+def run_review(state: dict, max_parallel: int) -> None:
+    research_stage = state["stages"].get("research", {})
+    research_tasks = research_stage.get("tasks", {})
+
+    # Collect PRs from completed research tasks
+    pr_tasks = {slug: t["pr"] for slug, t in research_tasks.items()
+                if t.get("status") == "completed" and t.get("pr")}
+    if not pr_tasks:
+        print("[review] No PRs to review.")
+        return
+
+    stage = state["stages"].setdefault("review", {"status": "pending", "tasks": {}})
+    stage["status"] = "in_progress"
+    save_state(state)
+
+    full_repo = state["full_repo"]
+
+    # Build work list -- skip completed reviews
+    work = []
+    for slug, pr in pr_tasks.items():
+        if stage["tasks"].get(slug, {}).get("status") == "completed":
+            print(f"[review] Skipping completed: {slug}")
+            continue
+        stage["tasks"].setdefault(slug, {"status": "pending", "pr": pr})
+        work.append((slug, pr))
+
+    if not work:
+        print("[review] All reviews already completed.")
+        stage["status"] = "completed"
+        save_state(state)
+        return
+
+    print(f"[review] Running {len(work)} review(s), max_parallel={max_parallel}")
+
+    with ThreadPoolExecutor(max_workers=max_parallel) as pool:
+        futures = {}
+        for slug, pr in work:
+            stage["tasks"][slug]["status"] = "in_progress"
+            save_state(state)
+            futures[pool.submit(_run_single_review, full_repo, pr)] = slug
+
+        for future in as_completed(futures):
+            slug = futures[future]
+            try:
+                future.result()
+                stage["tasks"][slug]["status"] = "completed"
+                print(f"[review] Completed: {slug}")
+            except Exception as exc:
+                stage["tasks"][slug] = {"status": "failed", "error": str(exc)}
+                print(f"[review] Failed: {slug} -- {exc}")
+            save_state(state)
+
+    all_ok = all(t.get("status") == "completed" for t in stage["tasks"].values())
+    stage["status"] = "completed" if all_ok else "failed"
+    save_state(state)
+
+    done = sum(1 for t in stage["tasks"].values() if t["status"] == "completed")
+    print(f"[review] Finished: {done}/{len(stage['tasks'])} reviews completed.")
 
 
 # ---------------------------------------------------------------------------
@@ -174,7 +243,9 @@ def run_pipeline(repo_name: str, prompt: str, max_parallel: int, start_from: str
     t0 = time.time()
     if start_from == "orchestrator":
         run_orchestrator(state, prompt)
-    run_research(state, max_parallel)
+    if start_from in ("orchestrator", "research"):
+        run_research(state, max_parallel)
+    run_review(state, max_parallel)
     print(f"\nPipeline finished in {time.time() - t0:.0f}s.")
 
 
