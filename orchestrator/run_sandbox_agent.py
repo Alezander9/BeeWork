@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import shlex
 import sys
@@ -12,6 +13,7 @@ MINUTES = 60
 AGENT_DIR = Path(__file__).parent
 KB_DIR = "/root/code/knowledgebase"
 WEB_SEARCHES_DIR = "/root/code/web_searches"
+RESEARCH_TASKS_DIR = "/root/code/research_tasks"
 
 # Container image: Debian + OpenCode + agent dir (AGENTS.MD, opencode.json, tools/)
 image = (
@@ -108,7 +110,7 @@ def main():
     if rc != 0:
         print("Failed to create/clone repo")
         sb.terminate()
-        return
+        return []
 
     # Configure git user in the knowledgebase repo so the agent can commit
     run(sb.exec("bash", "-c",
@@ -137,6 +139,25 @@ def main():
     proc.wait()
     agent_rc = proc.returncode
 
+    # Collect research tasks created by start_research_agent.py
+    research_tasks = []
+    try:
+        entries = sb.ls(RESEARCH_TASKS_DIR)
+        for entry in entries:
+            if not entry.path.endswith(".json"):
+                continue
+            with sb.open(f"{RESEARCH_TASKS_DIR}/{entry.path}", "r") as f:
+                content = f.read()
+            task = json.loads(content)
+            research_tasks.append(task)
+    except Exception:
+        pass  # directory may not exist if no research agents were spawned
+
+    if research_tasks:
+        print(f"\nCollected {len(research_tasks)} research task(s):")
+        for t in research_tasks:
+            print(f"  - {t.get('topic', 'unknown')}: {t.get('file_path', '')}")
+
     # Save the agent's work back to the repo
     print("Committing and pushing changes...")
     push_rc = run(sb.exec("bash", "-c",
@@ -149,6 +170,8 @@ def main():
 
     sb.terminate()
     print(f"exit code: {agent_rc}")
+
+    return research_tasks
 
 
 if __name__ == "__main__":
