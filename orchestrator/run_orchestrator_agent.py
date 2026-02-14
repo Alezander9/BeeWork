@@ -49,8 +49,54 @@ def run_cmd(proc, show=False):
 OWNER = "workerbee-gbt"
 
 
+def _parse_token_value(s):
+    """Convert suffixed token values like '159.4K' or '2.8M' to integers."""
+    s = s.strip().replace(',', '')
+    multipliers = {'K': 1_000, 'M': 1_000_000, 'B': 1_000_000_000}
+    if s and s[-1] in multipliers:
+        return int(float(s[:-1]) * multipliers[s[-1]])
+    return int(float(s))
+
+
+def _extract_token_usage(sb):
+    """Extract token usage by running 'opencode stats' and parsing the output."""
+    import re
+    proc = sb.exec("bash", "-c", "opencode stats 2>&1")
+    output = ""
+    for line in proc.stdout:
+        output += line
+    proc.wait()
+    print(f"[debug] opencode stats raw output:\n{output}")
+
+    # Try JSON first (in case future versions support it)
+    try:
+        stats = json.loads(output.strip())
+        total_tokens = stats.get("totalTokens", stats)
+        inp = total_tokens.get("input", total_tokens.get("input_tokens", 0))
+        out = total_tokens.get("output", total_tokens.get("output_tokens", 0))
+        return {"input_tokens": inp, "output_tokens": out}
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Parse box-drawing table output like: │Input                  159.4K │
+    inp = 0
+    out = 0
+    input_match = re.search(r'│\s*Input\s+([\d.,]+[KMB]?)\s*│', output)
+    output_match = re.search(r'│\s*Output\s+([\d.,]+[KMB]?)\s*│', output)
+    if input_match:
+        inp = _parse_token_value(input_match.group(1))
+    if output_match:
+        out = _parse_token_value(output_match.group(1))
+
+    if inp == 0 and out == 0:
+        print(f"Warning: could not extract token counts from opencode stats")
+        return {"input_tokens": None, "output_tokens": None}
+
+    return {"input_tokens": inp, "output_tokens": out}
+
+
 def run(repo_name, project_path):
-    """Run the orchestrator agent. Returns a list of research task dicts."""
+    """Run the orchestrator agent. Returns dict with research_tasks and total_tokens."""
     project_content = Path(project_path).read_text()
 
     required = ["ANTHROPIC_API_KEY", "GITHUB_PAT", "PARALLEL_API_KEY", "GEMINI_API_KEY"]
@@ -74,7 +120,7 @@ def run(repo_name, project_path):
         sb = modal.Sandbox.create(
             "sleep", "infinity",
             image=image, secrets=[secret], app=app,
-            workdir="/root/code", timeout=10 * MINUTES,
+            workdir="/root/code", timeout=25 * MINUTES,
         )
 
     # Check if the repo already exists, create if not, then clone
@@ -136,6 +182,12 @@ def run(repo_name, project_path):
     proc.wait()
     agent_rc = proc.returncode
 
+    # Extract token usage from OpenCode session DB
+    token_info = _extract_token_usage(sb)
+    input_tokens = token_info.get("input_tokens")
+    output_tokens = token_info.get("output_tokens")
+    print(f"[orchestrator] Token usage -- input: {input_tokens}, output: {output_tokens}")
+
     # Collect research tasks created by create_research_task.py
     TASKS_FILE = "/tmp/all_tasks.json"
     run_cmd(sb.exec("bash", "-c",
@@ -161,7 +213,7 @@ def run(repo_name, project_path):
     sb.terminate()
     print(f"exit code: {agent_rc}")
 
-    return research_tasks
+    return {"research_tasks": research_tasks, "input_tokens": input_tokens, "output_tokens": output_tokens}
 
 
 def main():

@@ -81,11 +81,14 @@ def run_orchestrator(state: dict, project_path: str) -> None:
         if stage is None:
             return
         from orchestrator.run_orchestrator_agent import run as orchestrate
-        tasks = orchestrate(state["repo_name"], project_path)
+        result = orchestrate(state["repo_name"], project_path)
+        tasks = result["research_tasks"]
+        input_tokens = result.get("input_tokens")
+        output_tokens = result.get("output_tokens")
         for task in tasks:
             task["research_agent_id"] = _topic_slug(task.get("topic", "unknown"))
-        stage["result"] = {"research_tasks": tasks}
-        print(f"[orchestrator] Done -- {len(tasks)} research task(s) created.")
+        stage["result"] = {"research_tasks": tasks, "input_tokens": input_tokens, "output_tokens": output_tokens}
+        print(f"[orchestrator] Done -- {len(tasks)} task(s), input tokens: {input_tokens}, output tokens: {output_tokens}")
 
 
 # ---------------------------------------------------------------------------

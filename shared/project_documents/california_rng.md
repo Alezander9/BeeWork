@@ -22,5 +22,4 @@ For the overview: what renewable gas is, California's RNG mandate landscape, and
 ## Scope
 
 - Find the top companies in this space
-- ~20 research tasks total
-- 2-4 research tasks per file, each using a different source website
+- 2-4 research tasks per file
