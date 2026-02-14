@@ -133,8 +133,16 @@ def run(topic, prompt, file_path, websites, repo):
         pty=True)
     rc = observe_agent_events(proc, MODEL_ID, "researcher")
 
+    # Capture the PR number created by the agent
+    pr_proc = sb.exec("bash", "-c",
+        f"cd {KB_DIR} && gh pr list --head $(git branch --show-current) --json number --jq '.[0].number'")
+    pr_raw = "".join(pr_proc.stdout).strip()
+    pr_proc.wait()
+    pr_number = int(pr_raw) if pr_raw.isdigit() else None
+
     sb.terminate()
-    print(f"exit code: {rc}")
+    print(f"exit code: {rc}, pr: {pr_number}")
+    return pr_number
 
 
 def main():
