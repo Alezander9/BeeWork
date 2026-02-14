@@ -1,0 +1,21 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "build": {
+      "mode": "primary",
+      "model": "google/gemini-3-flash-preview",
+      "tools": {
+        "write": true,
+        "edit": true,
+        "bash": true,
+        "webfetch": false
+      }
+    }
+  },
+  "permission": {
+    "edit": "allow",
+    "bash": {
+      "*": "allow"
+    }
+  }
+}
