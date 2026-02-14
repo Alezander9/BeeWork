@@ -38,6 +38,15 @@ The PR number and repo are provided in your prompt.
 - Do NOT use your own knowledge to question cited facts. If a claim has a citation, trust it.
 - Only flag factual problems when the PR directly contradicts something already in the knowledgebase.
 
+## Citation format
+
+For all substantive claims, ensure that their is a citation to the URL it came from. The format should be `[citation number]` and at the bottom of the file, there should be a list of citations in the format:
+
+### Citations
+- `[citation number]: <url>`
+- ...
+
+
 ## Review Philosophy
 
 You are a quality gatekeeper, not a fact-checker. Trust cited information. Your job is to catch uncited claims, contradictions with existing content, redundancy, bad formatting, and vague filler. If the content is cited, well-structured, and consistent with the knowledgebase, accept it.
