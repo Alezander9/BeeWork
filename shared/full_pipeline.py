@@ -95,7 +95,7 @@ def _topic_slug(topic: str) -> str:
 
 
 def _run_single_research(task: dict, full_repo: str) -> None:
-    from researcher.run_research_agent import run as research
+    from researcher.run_researcher_agent import run as research
     research(
         topic=task["topic"],
         prompt=task["prompt"],
