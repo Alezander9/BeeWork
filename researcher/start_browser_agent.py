@@ -8,7 +8,7 @@ import requests
 
 BASE_URL = "https://api.browser-use.com/api/v2"
 SCRIPT_DIR = Path(__file__).resolve().parent
-OUTPUT_DIR = SCRIPT_DIR.parent / "browser_agent_output"
+OUTPUT_DIR = SCRIPT_DIR / "browser_agent_output"
 OUTPUT_FILE = OUTPUT_DIR / "result.json"
 POLL_INTERVAL = 5
 TIMEOUT = 10 * 60  # 10 minutes
@@ -68,12 +68,8 @@ def poll_task(task_id):
         time.sleep(POLL_INTERVAL)
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Start a browser-use agent for web research")
-    parser.add_argument("--task", required=True, help="Task description for the browser agent")
-    parser.add_argument("--website", help="Target website URL to start browsing from")
-    args = parser.parse_args()
-
+def run_browser_agent(task, website=None):
+    """Run a browser-use agent and return the cleaned result dict."""
     # Create session to get the live URL
     session = create_session()
     session_id = session["id"]
@@ -83,7 +79,7 @@ def main():
         print(f"Live URL: {live_url}")
 
     # Start the task in the session
-    task_resp = create_task(session_id, args.task, args.website)
+    task_resp = create_task(session_id, task, website)
     task_id = task_resp["id"]
     print(f"Task: {task_id}")
 
@@ -97,17 +93,28 @@ def main():
         for key in ("evaluationPreviousGoal", "nextGoal"):
             step.pop(key, None)
 
-    # Dump results to a fixed, predictable path
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    OUTPUT_FILE.write_text(json.dumps(result, indent=2))
-    print(f"Results written to {OUTPUT_FILE}")
-
     output = result.get("output")
     if output:
         print(f"Output: {output}")
     verdict = result.get("judgeVerdict")
     if verdict is not None:
         print(f"Judge verdict: {verdict}")
+
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Start a browser-use agent for web research")
+    parser.add_argument("--task", required=True, help="Task description for the browser agent")
+    parser.add_argument("--website", help="Target website URL to start browsing from")
+    args = parser.parse_args()
+
+    result = run_browser_agent(args.task, args.website)
+
+    # Dump results to a fixed, predictable path
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    OUTPUT_FILE.write_text(json.dumps(result, indent=2))
+    print(f"Results written to {OUTPUT_FILE}")
 
 
 if __name__ == "__main__":

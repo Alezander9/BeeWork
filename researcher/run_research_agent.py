@@ -3,6 +3,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import argparse
+import base64
 import json
 import os
 import shlex
@@ -10,12 +11,14 @@ from dotenv import load_dotenv
 import modal
 from lmnr import Laminar
 from shared.tracing import observe_agent_events
+from researcher.start_browser_agent import run_browser_agent
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 MINUTES = 60
 AGENT_DIR = Path(__file__).parent
 KB_DIR = "/root/code/knowledgebase"
+BROWSER_RESULT_PATH = "/root/code/browser_agent_output/result.json"
 
 # Read model from opencode.json so we can tag LLM spans
 OPENCODE_CONFIG = json.loads((AGENT_DIR / "opencode.json").read_text())
@@ -35,7 +38,6 @@ image = (
         "apt-get update && apt-get install -y gh",
     )
     .run_commands("curl -fsSL https://opencode.ai/install | bash")
-    .pip_install("requests")
     .env({
         "PATH": "/root/.opencode/bin:/usr/local/bin:/usr/bin:/bin",
         "OPENCODE_DISABLE_AUTOUPDATE": "true",
@@ -79,12 +81,18 @@ def main():
 
     Laminar.initialize(project_api_key=lmnr_key)
 
+    # --- Step 1: Run browser agent locally ---
+    print(f"Running browser agent for: {args.websites}")
+    browser_result = run_browser_agent(task=args.prompt, website=args.websites)
+    result_json = json.dumps(browser_result, indent=2)
+    print(f"Browser agent finished (status: {browser_result.get('status', 'unknown')})")
+
+    # --- Step 2: Create Modal sandbox ---
     app = modal.App.lookup("beework-worker", create_if_missing=True)
     secret = modal.Secret.from_dict({
         "GOOGLE_GENERATIVE_AI_API_KEY": gemini_key,
         "GITHUB_PAT": github_pat,
         "GH_TOKEN": github_pat,
-        "BROWSER_USE_API_KEY": browser_use_key,
     })
 
     print(f"Creating sandbox...")
@@ -106,14 +114,22 @@ def main():
 
     # Configure git user in the knowledgebase repo so the agent can commit
     run_cmd(sb.exec("bash", "-c",
-        f"cd {KB_DIR} && git config user.name 'workerbee-gbt' && git config user.email 'beework.buzz@gmail.com'"))
+        f"cd {KB_DIR} && git config user.name 'workerbee-{args.topic}' && git config user.email 'beework.buzz@gmail.com'"))
 
-    # Build the prompt from task fields
+    # --- Step 3: Write browser results into sandbox ---
+    # Use base64 to safely transfer JSON that may contain special characters
+    encoded = base64.b64encode(result_json.encode()).decode()
+    run_cmd(sb.exec("bash", "-c",
+        f"mkdir -p /root/code/browser_agent_output && "
+        f"echo '{encoded}' | base64 -d > {BROWSER_RESULT_PATH}"))
+    print(f"Browser results written to sandbox at {BROWSER_RESULT_PATH}")
+
+    # --- Step 4: Run OpenCode agent ---
     prompt = (
         f"Topic: {args.topic}\n"
         f"Your task: {args.prompt}\n"
         f"Target file: {args.file_path}\n"
-        f"Target website: {args.websites}\n"
+        f"Browser research results are already available at browser_agent_output/result.json\n"
         f"Follow the instructions in AGENTS.md."
     )
 
