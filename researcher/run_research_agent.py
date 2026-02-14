@@ -57,15 +57,8 @@ def run_cmd(proc, show=False):
     return proc.returncode
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--topic", required=True, help="Topic of the research task")
-    parser.add_argument("--prompt", required=True, help="Detailed instructions for the agent")
-    parser.add_argument("--file-path", required=True, help="Path of the KB file to edit")
-    parser.add_argument("--websites", required=True, help="Target website URL for research")
-    parser.add_argument("--repo", required=True, help="Knowledgebase GitHub repo as owner/repo")
-    args = parser.parse_args()
-
+def run(topic, prompt, file_path, websites, repo):
+    """Run a researcher agent for a single research task."""
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if not gemini_key:
         raise EnvironmentError("Set GEMINI_API_KEY")
@@ -82,8 +75,8 @@ def main():
     Laminar.initialize(project_api_key=lmnr_key)
 
     # --- Step 1: Run browser agent locally ---
-    print(f"Running browser agent for: {args.websites}")
-    browser_result = run_browser_agent(task=args.prompt, website=args.websites)
+    print(f"Running browser agent for: {websites}")
+    browser_result = run_browser_agent(task=prompt, website=websites)
     result_json = json.dumps(browser_result, indent=2)
     print(f"Browser agent finished (status: {browser_result.get('status', 'unknown')})")
 
@@ -104,17 +97,16 @@ def main():
         )
 
     # Clone the knowledgebase repo
-    clone_url = f"https://x-access-token:$GITHUB_PAT@github.com/{args.repo}.git"
-    print(f"Cloning {args.repo} into {KB_DIR}...")
+    clone_url = f"https://x-access-token:$GITHUB_PAT@github.com/{repo}.git"
+    print(f"Cloning {repo} into {KB_DIR}...")
     rc = run_cmd(sb.exec("bash", "-c", f"git clone {clone_url} {KB_DIR}"), show=True)
     if rc != 0:
-        print("Failed to clone repo")
         sb.terminate()
-        return
+        raise RuntimeError(f"Failed to clone repo {repo}")
 
     # Configure git user in the knowledgebase repo so the agent can commit
     run_cmd(sb.exec("bash", "-c",
-        f"cd {KB_DIR} && git config user.name 'workerbee-{args.topic}' && git config user.email 'beework.buzz@gmail.com'"))
+        f"cd {KB_DIR} && git config user.name 'workerbee-{topic}' && git config user.email 'beework.buzz@gmail.com'"))
 
     # --- Step 3: Write browser results into sandbox ---
     # Use base64 to safely transfer JSON that may contain special characters
@@ -125,10 +117,10 @@ def main():
     print(f"Browser results written to sandbox at {BROWSER_RESULT_PATH}")
 
     # --- Step 4: Run OpenCode agent ---
-    prompt = (
-        f"Topic: {args.topic}\n"
-        f"Your task: {args.prompt}\n"
-        f"Target file: {args.file_path}\n"
+    agent_prompt = (
+        f"Topic: {topic}\n"
+        f"Your task: {prompt}\n"
+        f"Target file: {file_path}\n"
         f"Browser research results are already available at browser_agent_output/result.json\n"
         f"Follow the instructions in AGENTS.md."
     )
@@ -137,12 +129,23 @@ def main():
     # pty=True is required -- OpenCode hangs on Modal without a pseudo-terminal
     print(f"Running agent (model: {MODEL_ID})...")
     proc = sb.exec("bash", "-c",
-        f"opencode run --format json {shlex.quote(prompt)}",
+        f"opencode run --format json {shlex.quote(agent_prompt)}",
         pty=True)
     rc = observe_agent_events(proc, MODEL_ID)
 
     sb.terminate()
     print(f"exit code: {rc}")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--topic", required=True, help="Topic of the research task")
+    parser.add_argument("--prompt", required=True, help="Detailed instructions for the agent")
+    parser.add_argument("--file-path", required=True, help="Path of the KB file to edit")
+    parser.add_argument("--websites", required=True, help="Target website URL for research")
+    parser.add_argument("--repo", required=True, help="Knowledgebase GitHub repo as owner/repo")
+    args = parser.parse_args()
+    run(args.topic, args.prompt, args.file_path, args.websites, args.repo)
 
 
 if __name__ == "__main__":

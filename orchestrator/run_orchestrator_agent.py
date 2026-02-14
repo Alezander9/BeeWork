@@ -39,7 +39,7 @@ image = (
 )
 
 
-def run(proc, show=False):
+def run_cmd(proc, show=False):
     if show:
         for line in proc.stdout:
             print(line, end="")
@@ -47,12 +47,8 @@ def run(proc, show=False):
     return proc.returncode
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("repo_name", help="Name for the new GitHub repository")
-    parser.add_argument("--prompt", default="Follow the instructions in AGENTS.md")
-    args = parser.parse_args()
-
+def run(repo_name, prompt="Follow the instructions in AGENTS.md"):
+    """Run the orchestrator agent. Returns a list of research task dicts."""
     anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not anthropic_api_key:
         raise EnvironmentError("Set ANTHROPIC_API_KEY")
@@ -84,26 +80,25 @@ def main():
         )
 
     # Check if the repo already exists, create if not, then clone
-    repo_name = args.repo_name
     safe_repo_name = shlex.quote(repo_name)
 
     # gh repo view will succeed if the repo exists under the authenticated user
-    check_rc = run(sb.exec("bash", "-c", f"gh repo view {safe_repo_name} --json name"), show=False)
+    check_rc = run_cmd(sb.exec("bash", "-c", f"gh repo view {safe_repo_name} --json name"), show=False)
 
     if check_rc == 0:
         # Repo exists — just clone it
-        print(f"Repo '{args.repo_name}' already exists, cloning...")
-        rc = run(sb.exec("bash", "-c",
+        print(f"Repo '{repo_name}' already exists, cloning...")
+        rc = run_cmd(sb.exec("bash", "-c",
             f"gh repo clone {safe_repo_name} {KB_DIR}"
         ), show=True)
     else:
         # Repo doesn't exist — create and clone
-        print(f"Creating new GitHub repo '{args.repo_name}'...")
+        print(f"Creating new GitHub repo '{repo_name}'...")
         create_cmd = (
             f"gh repo create {safe_repo_name} --public --clone "
             f"--description 'Created by BeeWork Agent'"
         )
-        rc = run(sb.exec("bash", "-c",
+        rc = run_cmd(sb.exec("bash", "-c",
             f"cd /root && {create_cmd} && mv {safe_repo_name} {KB_DIR}"
         ), show=True)
 
@@ -113,7 +108,7 @@ def main():
         return []
 
     # Configure git user in the knowledgebase repo so the agent can commit
-    run(sb.exec("bash", "-c",
+    run_cmd(sb.exec("bash", "-c",
         f"cd {KB_DIR} && git config user.name 'BeeWork Orchestrator' && git config user.email 'agent@beework.dev'"))
 
     # Set remote origin URL with embedded PAT so the agent can push without auth issues
@@ -122,16 +117,16 @@ def main():
         f"GH_USER=$(gh api user --jq .login) && "
         f"git remote set-url origin https://$GITHUB_PAT@github.com/$GH_USER/{repo_name}.git"
     )
-    run(sb.exec("bash", "-c", remote_cmd))
+    run_cmd(sb.exec("bash", "-c", remote_cmd))
 
     # Create web searches directory (outside knowledgebase so results aren't pushed)
-    run(sb.exec("bash", "-c", f"mkdir -p {WEB_SEARCHES_DIR}"))
+    run_cmd(sb.exec("bash", "-c", f"mkdir -p {WEB_SEARCHES_DIR}"))
 
     # Run the agent from /root/code (where opencode.json, AGENTS.MD, tools/ live)
     # pty=True is required -- OpenCode hangs without a pseudo-terminal
     print("Running agent...")
     proc = sb.exec("bash", "-c",
-        f"opencode run {shlex.quote(args.prompt)}",
+        f"opencode run {shlex.quote(prompt)}",
         pty=True)
     for line in proc.stdout:
         print(line, end="")
@@ -160,7 +155,7 @@ def main():
 
     # Save the agent's work back to the repo
     print("Committing and pushing changes...")
-    push_rc = run(sb.exec("bash", "-c",
+    push_rc = run_cmd(sb.exec("bash", "-c",
         f"cd {KB_DIR} && git add -A && "
         f"git diff --cached --quiet || "
         f"(git commit -m 'Agent run' && git push -u origin HEAD)"),
@@ -172,6 +167,14 @@ def main():
     print(f"exit code: {agent_rc}")
 
     return research_tasks
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("repo_name", help="Name for the new GitHub repository")
+    parser.add_argument("--prompt", default="Follow the instructions in AGENTS.md")
+    args = parser.parse_args()
+    run(args.repo_name, args.prompt)
 
 
 if __name__ == "__main__":
