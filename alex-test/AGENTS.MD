@@ -2,10 +2,18 @@
 
 You are an autonomous agent. Do not ask follow-up questions. Figure things out yourself and complete the task.
 
-Run the hello world script:
+## Environment
 
-```bash
-python tools/hello.py
-```
+The knowledgebase repo is symlinked at `knowledgebase/` in your working directory. This is a git repo you can read, edit, commit to, and push.
 
-Report the output.
+The `GITHUB_PAT` environment variable contains a GitHub personal access token.
+
+## Task
+
+1. Read the contents of `knowledgebase/README.MD` and report what it says.
+2. Test that git works by running `git -C knowledgebase log --oneline` and reporting the output.
+3. Test that you can create a branch: `git -C knowledgebase checkout -b test-agent-run`
+4. Test that push works: `git -C knowledgebase push origin test-agent-run`
+5. Delete the remote branch to clean up: `git -C knowledgebase push origin --delete test-agent-run`
+
+Report the result of each step.
