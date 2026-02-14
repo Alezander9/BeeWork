@@ -137,16 +137,23 @@ def run(repo_name, prompt="Follow the instructions in AGENTS.md"):
     # Collect research tasks created by create_research_task.py
     research_tasks = []
     try:
-        entries = sb.ls(RESEARCH_TASKS_DIR)
-        for entry in entries:
-            if not entry.path.endswith(".json"):
-                continue
-            with sb.open(f"{RESEARCH_TASKS_DIR}/{entry.path}", "r") as f:
-                content = f.read()
-            task = json.loads(content)
-            research_tasks.append(task)
-    except Exception:
-        pass  # directory may not exist if no research tasks were created
+        # Use shell to list and read each JSON file — more reliable than sb.ls/sb.open
+        list_proc = sb.exec("bash", "-c",
+            f"find {RESEARCH_TASKS_DIR} -name '*.json' -type f 2>/dev/null")
+        list_output = list_proc.stdout.read()
+        list_proc.wait()
+        file_paths = [p.strip() for p in list_output.splitlines() if p.strip()]
+        for fpath in file_paths:
+            cat_proc = sb.exec("bash", "-c", f"cat {shlex.quote(fpath)}")
+            content = cat_proc.stdout.read()
+            cat_proc.wait()
+            try:
+                task = json.loads(content)
+                research_tasks.append(task)
+            except json.JSONDecodeError as e:
+                print(f"Warning: could not parse {fpath}: {e}")
+    except Exception as e:
+        print(f"Warning: failed to collect research tasks: {e}")
 
     if research_tasks:
         print(f"\nCollected {len(research_tasks)} research task(s):")
