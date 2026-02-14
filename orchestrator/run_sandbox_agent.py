@@ -1,9 +1,18 @@
 import argparse
 import os
 import shlex
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 import modal
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    try:
+        import tomllib
+    except ModuleNotFoundError:
+        import tomli as tomllib  # pip install tomli for Python <3.11
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -11,11 +20,26 @@ MINUTES = 60
 AGENT_DIR = Path(__file__).parent
 KB_DIR = "/root/code/knowledgebase"
 
+# Read sandbox Python dependencies from pyproject.toml
+with open(AGENT_DIR / "pyproject.toml", "rb") as f:
+    _pyproject = tomllib.load(f)
+SANDBOX_DEPS = _pyproject["project"]["dependencies"]
+
 # Container image: Debian + OpenCode + agent dir (AGENTS.MD, opencode.json, tools/)
 image = (
     modal.Image.debian_slim()
     .apt_install("curl", "git")
+    .run_commands(
+        "curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg "
+        "| dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg",
+        'echo "deb [arch=$(dpkg --print-architecture) '
+        'signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] '
+        'https://cli.github.com/packages stable main" '
+        '| tee /etc/apt/sources.list.d/github-cli.list > /dev/null',
+        "apt-get update && apt-get install -y gh",
+    )
     .run_commands("curl -fsSL https://opencode.ai/install | bash")
+    .pip_install(*SANDBOX_DEPS)
     .env({
         "PATH": "/root/.opencode/bin:/usr/local/bin:/usr/bin:/bin",
         "OPENCODE_DISABLE_AUTOUPDATE": "true",
@@ -35,7 +59,7 @@ def run(proc, show=False):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("repo", help="Knowledgebase GitHub repo as owner/repo")
+    parser.add_argument("repo_name", help="Name for the new GitHub repository")
     parser.add_argument("--prompt", default="Follow the instructions in AGENTS.md")
     args = parser.parse_args()
 
@@ -45,11 +69,16 @@ def main():
     github_pat = os.environ.get("GITHUB_PAT")
     if not github_pat:
         raise EnvironmentError("Set GITHUB_PAT")
+    parallel_api_key = os.environ.get("PARALLEL_API_KEY")
+    if not parallel_api_key:
+        raise EnvironmentError("Set PARALLEL_API_KEY")
 
     app = modal.App.lookup("test-opencode", create_if_missing=True)
     secret = modal.Secret.from_dict({
         "ANTHROPIC_API_KEY": api_key,
         "GITHUB_PAT": github_pat,
+        "GH_TOKEN": github_pat,
+        "PARALLEL_API_KEY": parallel_api_key,
     })
 
     print(f"Creating sandbox...")
@@ -60,12 +89,31 @@ def main():
             workdir="/root/code", timeout=5 * MINUTES,
         )
 
-    # Clone the knowledgebase repo
-    clone_url = f"https://x-access-token:$GITHUB_PAT@github.com/{args.repo}.git"
-    print(f"Cloning {args.repo} into {KB_DIR}...")
-    rc = run(sb.exec("bash", "-c", f"git clone {clone_url} {KB_DIR}"), show=True)
+    # Check if the repo already exists, create if not, then clone
+    repo_name = shlex.quote(args.repo_name)
+
+    # gh repo view will succeed if the repo exists under the authenticated user
+    check_rc = run(sb.exec("bash", "-c", f"gh repo view {repo_name} --json name"), show=False)
+
+    if check_rc == 0:
+        # Repo exists — just clone it
+        print(f"Repo '{args.repo_name}' already exists, cloning...")
+        rc = run(sb.exec("bash", "-c",
+            f"gh repo clone {repo_name} {KB_DIR}"
+        ), show=True)
+    else:
+        # Repo doesn't exist — create and clone
+        print(f"Creating new GitHub repo '{args.repo_name}'...")
+        create_cmd = (
+            f"gh repo create {repo_name} --public --clone "
+            f"--description 'Created by BeeWork Agent'"
+        )
+        rc = run(sb.exec("bash", "-c",
+            f"cd /root && {create_cmd} && mv {repo_name} {KB_DIR}"
+        ), show=True)
+
     if rc != 0:
-        print("Failed to clone repo")
+        print("Failed to create/clone repo")
         sb.terminate()
         return
 

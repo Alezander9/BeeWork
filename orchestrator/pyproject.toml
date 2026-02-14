@@ -1,0 +1,10 @@
+[project]
+name = "beework-orchestrator"
+version = "0.1.0"
+description = "BeeWork orchestrator – sandbox agent runner"
+requires-python = ">=3.10"
+
+dependencies = [
+    "requests",
+    "python-dotenv",
+]

@@ -4,13 +4,10 @@ You are an autonomous agent. Do not ask follow-up questions. Figure things out y
 
 ## Environment
 
-The knowledgebase repo is symlinked at `knowledgebase/` in your working directory. This is a git repo you can read, edit, commit to, and push.
+The knowledgebase repo is located at `knowledgebase/` in your working directory. This is a git repo with a GitHub remote already configured. All files you create should go inside `knowledgebase/`, and you should commit and push from there.
 
 The `GITHUB_PAT` environment variable contains a GitHub personal access token.
 
 ## Task
 
-1. Read the contents of `knowledgebase/README.MD` and report what it says.
-2. Test that git works by running `git -C knowledgebase log --oneline` and reporting the output.
-
-Report the result of each step.
+I want to create a knowledge base on everything related to the California renewable gas industry. Specifically I want you to look at all the major companies and impacts that relate to this industry. Create the file structure in the `knowledgebase/` repository, but do not populate any of the files with information yet. You can use the tools/search_web.py script to find information on the web about this topic. Commit and push your changes when you are done.
