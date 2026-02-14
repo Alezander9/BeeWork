@@ -1,11 +1,15 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import argparse
 import json
 import os
 import shlex
-from pathlib import Path
 from dotenv import load_dotenv
 import modal
 from lmnr import Laminar
+from shared.tracing import observe_agent_events
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -37,95 +41,6 @@ def run_cmd(proc, show=False):
     if show:
         for line in proc.stdout:
             print(line, end="")
-    proc.wait()
-    return proc.returncode
-
-
-def parse_jsonl(proc):
-    """Yield parsed JSON objects from a PTY-backed JSONL stream.
-
-    PTY can split long JSON lines across multiple reads. We accumulate
-    partial content until we get valid JSON, then yield it.
-    """
-    buf = ""
-    for line in proc.stdout:
-        line = line.replace("\r", "")
-        for fragment in line.split("\n"):
-            fragment = fragment.strip()
-            if not fragment:
-                continue
-            buf += fragment
-            try:
-                obj = json.loads(buf)
-                buf = ""
-                yield obj
-            except json.JSONDecodeError:
-                # Incomplete JSON -- keep accumulating
-                continue
-    if buf.strip():
-        print(f"[unparsed] {buf[:200]}")
-
-
-def observe_agent_events(proc):
-    """Parse OpenCode JSONL stream and create Laminar spans for each event."""
-    step_stack = []  # stack of LLM step spans (for matching start/finish)
-
-    with Laminar.start_as_current_span(
-        name="agent_run",
-        input={"model": MODEL_ID},
-        span_type="DEFAULT",
-    ):
-        for event in parse_jsonl(proc):
-            etype = event.get("type")
-            part = event.get("part", {})
-
-            if etype == "step_start":
-                span = Laminar.start_span(name="llm_step", span_type="LLM")
-                span.set_attributes({
-                    "gen_ai.request.model": MODEL_ID,
-                    "gen_ai.system": MODEL_ID.split("/")[0] if "/" in MODEL_ID else "unknown",
-                })
-                step_stack.append(span)
-
-            elif etype == "step_finish":
-                tokens = part.get("tokens", {})
-                cost = part.get("cost", 0)
-                if step_stack:
-                    span = step_stack.pop()
-                    span.set_attributes({
-                        "gen_ai.usage.input_tokens": tokens.get("input", 0),
-                        "gen_ai.usage.output_tokens": tokens.get("output", 0),
-                        "gen_ai.usage.reasoning_tokens": tokens.get("reasoning", 0),
-                        "gen_ai.usage.cache_read_tokens": tokens.get("cache", {}).get("read", 0),
-                        "gen_ai.usage.cache_write_tokens": tokens.get("cache", {}).get("write", 0),
-                        "gen_ai.usage.cost": cost,
-                    })
-                    span.end()
-                print(f"[step] tokens={tokens} cost={cost}")
-
-            elif etype == "tool_use":
-                state = part.get("state", {})
-                tool_name = part.get("tool", "unknown")
-                with Laminar.start_as_current_span(
-                    name=tool_name, input=state.get("input", {}), span_type="TOOL",
-                ):
-                    Laminar.set_span_output(state.get("output", ""))
-                print(f"[tool] {tool_name}")
-
-            elif etype == "text":
-                text = part.get("text", "")
-                with Laminar.start_as_current_span(
-                    name="text", input={"text": text}, span_type="TOOL",
-                ):
-                    Laminar.set_span_output(text)
-                print(f"[text] {text[:200]}")
-
-            elif etype == "error":
-                print(f"[error] {event.get('error', {})}")
-
-        for span in step_stack:
-            span.end()
-
     proc.wait()
     return proc.returncode
 
@@ -181,7 +96,7 @@ def main():
     proc = sb.exec("bash", "-c",
         f"opencode run --format json {shlex.quote(args.prompt)}",
         pty=True)
-    rc = observe_agent_events(proc)
+    rc = observe_agent_events(proc, MODEL_ID)
 
     sb.terminate()
     print(f"exit code: {rc}")

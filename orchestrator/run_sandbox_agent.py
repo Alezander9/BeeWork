@@ -1,10 +1,15 @@
-import argparse
-import os
-import shlex
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import argparse
+import json
+import os
+import shlex
 from dotenv import load_dotenv
 import modal
+from lmnr import Laminar
+from shared.tracing import observe_agent_events
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -24,6 +29,10 @@ KB_DIR = "/root/code/knowledgebase"
 with open(AGENT_DIR / "pyproject.toml", "rb") as f:
     _pyproject = tomllib.load(f)
 SANDBOX_DEPS = _pyproject["project"]["dependencies"]
+
+# Read model from opencode.json so we can tag LLM spans
+OPENCODE_CONFIG = json.loads((AGENT_DIR / "opencode.json").read_text())
+MODEL_ID = OPENCODE_CONFIG.get("agent", {}).get("build", {}).get("model", "unknown")
 
 # Container image: Debian + OpenCode + agent dir (AGENTS.MD, opencode.json, tools/)
 image = (
@@ -46,6 +55,8 @@ image = (
         "OPENCODE_DISABLE_LSP_DOWNLOAD": "true",
     })
     .add_local_dir(str(AGENT_DIR), "/root/code", copy=True)
+    # Trigger one-time DB migration at build time so it never runs at runtime
+    .run_commands("cd /root/code && opencode session list || true")
 )
 
 
@@ -72,6 +83,11 @@ def main():
     parallel_api_key = os.environ.get("PARALLEL_API_KEY")
     if not parallel_api_key:
         raise EnvironmentError("Set PARALLEL_API_KEY")
+    lmnr_key = os.environ.get("LMNR_PROJECT_API_KEY")
+    if not lmnr_key:
+        raise EnvironmentError("Set LMNR_PROJECT_API_KEY")
+
+    Laminar.initialize(project_api_key=lmnr_key)
 
     app = modal.App.lookup("test-opencode", create_if_missing=True)
     secret = modal.Secret.from_dict({
@@ -129,17 +145,13 @@ def main():
     )
     run(sb.exec("bash", "-c", remote_cmd))
 
-    # Run the agent from /root/code (where opencode.json, AGENTS.MD, tools/ live)
-    # pty=True is required -- OpenCode hangs without a pseudo-terminal
-    print("Running agent...")
+    # Run agent with --format json for structured JSONL output
+    # pty=True is required -- OpenCode hangs on Modal without a pseudo-terminal
+    print(f"Running agent (model: {MODEL_ID})...")
     proc = sb.exec("bash", "-c",
-        f"opencode run {shlex.quote(args.prompt)}",
+        f"opencode run --format json {shlex.quote(args.prompt)}",
         pty=True)
-    for line in proc.stdout:
-        print(line, end="")
-
-    proc.wait()
-    agent_rc = proc.returncode
+    agent_rc = observe_agent_events(proc, MODEL_ID)
 
     # Save the agent's work back to the repo
     print("Committing and pushing changes...")
