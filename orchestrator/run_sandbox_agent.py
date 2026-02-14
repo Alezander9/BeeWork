@@ -1,17 +1,17 @@
+import argparse
 import os
+import shlex
 from pathlib import Path
 from dotenv import load_dotenv
 import modal
 
-# Load .env from repo root
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 MINUTES = 60
-
-# All file paths relative to this script's directory
 AGENT_DIR = Path(__file__).parent
+KB_DIR = "/root/code/knowledgebase"
 
-# Container image: Debian + OpenCode + project files
+# Container image: Debian + OpenCode + agent dir (AGENTS.MD, opencode.json, tools/)
 image = (
     modal.Image.debian_slim()
     .apt_install("curl", "git")
@@ -25,17 +25,34 @@ image = (
 )
 
 
+def run(proc, show=False):
+    if show:
+        for line in proc.stdout:
+            print(line, end="")
+    proc.wait()
+    return proc.returncode
+
+
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("repo", help="Knowledgebase GitHub repo as owner/repo")
+    parser.add_argument("--prompt", default="Follow the instructions in AGENTS.md")
+    args = parser.parse_args()
+
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        raise EnvironmentError("Set ANTHROPIC_API_KEY environment variable")
+        raise EnvironmentError("Set ANTHROPIC_API_KEY")
+    github_pat = os.environ.get("GITHUB_PAT")
+    if not github_pat:
+        raise EnvironmentError("Set GITHUB_PAT")
 
-    app = modal.App.lookup("orchestrator-opencode", create_if_missing=True)
+    app = modal.App.lookup("test-opencode", create_if_missing=True)
+    secret = modal.Secret.from_dict({
+        "ANTHROPIC_API_KEY": api_key,
+        "GITHUB_PAT": github_pat,
+    })
 
-    # LLM key injected at runtime, not baked into image
-    secret = modal.Secret.from_dict({"ANTHROPIC_API_KEY": api_key})
-
-    # Start sandbox with idle process, then exec into it
+    print(f"Creating sandbox...")
     with modal.enable_output():
         sb = modal.Sandbox.create(
             "sleep", "infinity",
@@ -43,11 +60,25 @@ def main():
             workdir="/root/code", timeout=5 * MINUTES,
         )
 
-    # pty=True is required -- OpenCode hangs without a pseudo-terminal
-    proc = sb.exec("bash", "-c",
-        "opencode run 'Follow the instructions in AGENTS.md'",
-        pty=True)
+    # Clone the knowledgebase repo
+    clone_url = f"https://x-access-token:$GITHUB_PAT@github.com/{args.repo}.git"
+    print(f"Cloning {args.repo} into {KB_DIR}...")
+    rc = run(sb.exec("bash", "-c", f"git clone {clone_url} {KB_DIR}"), show=True)
+    if rc != 0:
+        print("Failed to clone repo")
+        sb.terminate()
+        return
 
+    # Configure git user in the knowledgebase repo so the agent can commit
+    run(sb.exec("bash", "-c",
+        f"cd {KB_DIR} && git config user.name 'BeeWork Agent' && git config user.email 'agent@beework.dev'"))
+
+    # Run the agent from /root/code (where opencode.json, AGENTS.MD, tools/ live)
+    # pty=True is required -- OpenCode hangs without a pseudo-terminal
+    print("Running agent...")
+    proc = sb.exec("bash", "-c",
+        f"opencode run {shlex.quote(args.prompt)}",
+        pty=True)
     for line in proc.stdout:
         print(line, end="")
 

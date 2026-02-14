@@ -12,8 +12,6 @@ The `GITHUB_PAT` environment variable contains a GitHub personal access token.
 
 1. Read the contents of `knowledgebase/README.MD` and report what it says.
 2. Test that git works by running `git -C knowledgebase log --oneline` and reporting the output.
-3. Test that you can create a branch: `git -C knowledgebase checkout -b test-agent-run`
-4. Test that push works: `git -C knowledgebase push origin test-agent-run`
-5. Delete the remote branch to clean up: `git -C knowledgebase push origin --delete test-agent-run`
+
 
 Report the result of each step.
