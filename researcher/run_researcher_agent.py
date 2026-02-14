@@ -104,10 +104,6 @@ def run(topic, prompt, file_path, websites, repo, agent_id=None, key_index=0):
         sb.terminate()
         raise RuntimeError(f"Failed to clone repo {repo}")
 
-    git_name = f"workerbee-{agent_id}" if agent_id else f"workerbee-{topic}"
-    run_cmd(sb.exec("bash", "-c",
-        f"cd {KB_DIR} && git config user.name {shlex.quote(git_name)} && git config user.email 'beework.buzz@gmail.com'"))
-
     # --- Step 3: Write browser results into sandbox ---
     # Use base64 to safely transfer JSON that may contain special characters
     encoded = base64.b64encode(result_json.encode()).decode()
