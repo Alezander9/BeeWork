@@ -11,6 +11,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = SCRIPT_DIR.parent / "browser_agent_output"
 OUTPUT_FILE = OUTPUT_DIR / "result.json"
 POLL_INTERVAL = 5
+TIMEOUT = 10 * 60  # 10 minutes
 
 
 def headers():
@@ -50,13 +51,18 @@ def create_task(session_id, task, website=None):
 
 
 def poll_task(task_id):
+    start = time.time()
     while True:
+        elapsed = time.time() - start
+        if elapsed > TIMEOUT:
+            print(f"[poll] timed out after {int(elapsed)}s")
+            return {"status": "timeout", "output": "Browser agent timed out", "steps": []}
         resp = requests.get(f"{BASE_URL}/tasks/{task_id}", headers=headers())
         resp.raise_for_status()
         task = resp.json()
         status = task.get("status")
         steps = task.get("steps", [])
-        print(f"[poll] status={status} steps={len(steps)}")
+        print(f"[poll] status={status} steps={len(steps)} elapsed={int(elapsed)}s")
         if status in ("finished", "stopped"):
             return task
         time.sleep(POLL_INTERVAL)
