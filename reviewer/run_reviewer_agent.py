@@ -54,9 +54,10 @@ def run_cmd(proc, show=False):
     return proc.returncode
 
 
-def run(repo, pr, agent_id=None):
+def run(repo, pr, agent_id=None, key_index=0):
     """Run a reviewer agent for a single PR. Called by pipeline or CLI."""
-    required = ["GEMINI_API_KEY", "GITHUB_PAT", "LMNR_PROJECT_API_KEY"]
+    gemini_env = f"GEMINI_API_KEY_{key_index}"
+    required = [gemini_env, "GITHUB_PAT", "LMNR_PROJECT_API_KEY"]
     missing = [k for k in required if not os.environ.get(k)]
     if missing:
         raise EnvironmentError(f"Missing env vars: {', '.join(missing)}")
@@ -66,7 +67,7 @@ def run(repo, pr, agent_id=None):
 
     app = modal.App.lookup("beework-reviewer", create_if_missing=True)
     secret = modal.Secret.from_dict({
-        "GOOGLE_GENERATIVE_AI_API_KEY": os.environ["GEMINI_API_KEY"],
+        "GOOGLE_GENERATIVE_AI_API_KEY": os.environ[gemini_env],
         "GITHUB_PAT": github_pat,
         "GH_TOKEN": github_pat,
     })
@@ -102,8 +103,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", required=True)
     parser.add_argument("--pr", required=True, type=int)
+    parser.add_argument("--key-index", type=int, default=0, help="Which GEMINI_API_KEY_N to use")
     args = parser.parse_args()
-    run(args.repo, args.pr)
+    run(args.repo, args.pr, key_index=args.key_index)
 
 
 if __name__ == "__main__":

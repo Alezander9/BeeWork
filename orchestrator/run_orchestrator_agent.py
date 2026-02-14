@@ -1,10 +1,15 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import argparse
 import json
 import os
 import shlex
-from pathlib import Path
 from dotenv import load_dotenv
 import modal
+from lmnr import Laminar
+from shared.tracing import observe_agent_events
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -13,6 +18,9 @@ AGENT_DIR = Path(__file__).parent
 KB_DIR = "/root/code/knowledgebase"
 WEB_SEARCHES_DIR = "/root/code/web_searches"
 RESEARCH_TASKS_DIR = "/root/code/research_tasks"
+
+OPENCODE_CONFIG = json.loads((AGENT_DIR / "opencode.json").read_text())
+MODEL_ID = OPENCODE_CONFIG.get("agent", {}).get("build", {}).get("model", "unknown")
 
 # Container image: Debian + OpenCode + agent dir (AGENTS.MD, opencode.json, tools/)
 image = (
@@ -95,21 +103,23 @@ def _extract_token_usage(sb):
     return {"input_tokens": inp, "output_tokens": out}
 
 
-def run(repo_name, project_path):
+def run(repo_name, project_path, key_index=0):
     """Run the orchestrator agent. Returns dict with research_tasks and total_tokens."""
     project_content = Path(project_path).read_text()
 
-    required = ["ANTHROPIC_API_KEY", "GITHUB_PAT", "PARALLEL_API_KEY", "GEMINI_API_KEY"]
+    gemini_env = f"GEMINI_API_KEY_{key_index}"
+    required = ["ANTHROPIC_API_KEY", "GITHUB_PAT", "PARALLEL_API_KEY", gemini_env, "LMNR_PROJECT_API_KEY"]
     missing = [k for k in required if not os.environ.get(k)]
     if missing:
         raise EnvironmentError(f"Missing env vars: {', '.join(missing)}")
 
     github_pat = os.environ["GITHUB_PAT"]
+    Laminar.initialize(project_api_key=os.environ["LMNR_PROJECT_API_KEY"])
 
     app = modal.App.lookup("test-opencode", create_if_missing=True)
     secret = modal.Secret.from_dict({
         "ANTHROPIC_API_KEY": os.environ["ANTHROPIC_API_KEY"],
-        "GOOGLE_GENERATIVE_AI_API_KEY": os.environ["GEMINI_API_KEY"],
+        "GOOGLE_GENERATIVE_AI_API_KEY": os.environ[gemini_env],
         "GITHUB_PAT": github_pat,
         "GH_TOKEN": github_pat,
         "PARALLEL_API_KEY": os.environ["PARALLEL_API_KEY"],
@@ -172,15 +182,11 @@ def run(repo_name, project_path):
 
     # Run the agent from /root/code (where opencode.json, AGENTS.MD, tools/ live)
     # pty=True is required -- OpenCode hangs without a pseudo-terminal
-    print("Running agent...")
+    print(f"Running agent (model: {MODEL_ID})...")
     proc = sb.exec("bash", "-c",
-        "opencode run 'Follow the instructions in AGENTS.md'",
+        "opencode run --format json 'Follow the instructions in AGENTS.md'",
         pty=True)
-    for line in proc.stdout:
-        print(line, end="")
-
-    proc.wait()
-    agent_rc = proc.returncode
+    agent_rc = observe_agent_events(proc, MODEL_ID, "orchestrator")
 
     # Extract token usage from OpenCode session DB
     token_info = _extract_token_usage(sb)

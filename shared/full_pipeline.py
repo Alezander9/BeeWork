@@ -2,7 +2,7 @@
 BeeWork full pipeline -- orchestrator -> parallel research -> parallel review.
 
 Usage:
-    uv run python shared/full_pipeline.py --repo <name> --project <path/to/requirements.md> [--max-parallel 3] [--start-from orchestrator|research|review]
+    uv run python shared/full_pipeline.py --repo <name> --project <path/to/requirements.md> [--max-research 5] [--max-review 1] [--start-from orchestrator|research|review]
 
 State is persisted to pipeline_runs/{repo_name}.json for resumability.
 Only "completed" tasks are skipped; pending, failed, and stale in_progress
@@ -28,9 +28,10 @@ load_dotenv(PROJECT_ROOT / ".env")
 OWNER = "workerbee-gbt"
 PIPELINE_DIR = PROJECT_ROOT / "pipeline_runs"
 STAGES = ["orchestrator", "research", "review"]
+NUM_GEMINI_KEYS = 5
 
 REQUIRED_ENV_VARS = [
-    "GEMINI_API_KEY",
+    "GEMINI_API_KEY_0",
     "GITHUB_PAT",
     "ANTHROPIC_API_KEY",
     "PARALLEL_API_KEY",
@@ -99,7 +100,7 @@ def _topic_slug(topic: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", topic.lower()).strip("-")
 
 
-def _run_single_research(task: dict, full_repo: str) -> int | None:
+def _run_single_research(task: dict, full_repo: str, key_index: int = 0) -> int | None:
     from researcher.run_researcher_agent import run as research
     return research(
         topic=task["topic"],
@@ -108,6 +109,7 @@ def _run_single_research(task: dict, full_repo: str) -> int | None:
         websites=task["websites"],
         repo=full_repo,
         agent_id=task.get("research_agent_id"),
+        key_index=key_index,
     )
 
 
@@ -141,10 +143,11 @@ def run_research(state: dict, max_parallel: int) -> None:
 
     with ThreadPoolExecutor(max_workers=max_parallel) as pool:
         futures = {}
-        for slug, task in work:
+        for i, (slug, task) in enumerate(work):
             stage["tasks"][slug]["status"] = "in_progress"
             save_state(state)
-            futures[pool.submit(_run_single_research, task, state["full_repo"])] = slug
+            key_index = i % NUM_GEMINI_KEYS
+            futures[pool.submit(_run_single_research, task, state["full_repo"], key_index)] = slug
 
         for future in as_completed(futures):
             slug = futures[future]
@@ -169,9 +172,9 @@ def run_research(state: dict, max_parallel: int) -> None:
 # Stage: review (parallel)
 # ---------------------------------------------------------------------------
 
-def _run_single_review(repo: str, pr: int, agent_id: str = None) -> None:
+def _run_single_review(repo: str, pr: int, agent_id: str = None, key_index: int = 0) -> None:
     from reviewer.run_reviewer_agent import run as review
-    review(repo=repo, pr=pr, agent_id=agent_id)
+    review(repo=repo, pr=pr, agent_id=agent_id, key_index=key_index)
 
 
 def run_review(state: dict, max_parallel: int) -> None:
@@ -211,10 +214,11 @@ def run_review(state: dict, max_parallel: int) -> None:
 
     with ThreadPoolExecutor(max_workers=max_parallel) as pool:
         futures = {}
-        for slug, pr, agent_id in work:
+        for i, (slug, pr, agent_id) in enumerate(work):
             stage["tasks"][slug]["status"] = "in_progress"
             save_state(state)
-            futures[pool.submit(_run_single_review, full_repo, pr, agent_id)] = slug
+            key_index = i % NUM_GEMINI_KEYS
+            futures[pool.submit(_run_single_review, full_repo, pr, agent_id, key_index)] = slug
 
         for future in as_completed(futures):
             slug = futures[future]
@@ -239,7 +243,7 @@ def run_review(state: dict, max_parallel: int) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
-def run_pipeline(repo_name: str, project_path: str, max_parallel: int, start_from: str) -> None:
+def run_pipeline(repo_name: str, project_path: str, max_research: int, max_review: int, start_from: str) -> None:
     missing = [v for v in REQUIRED_ENV_VARS if not os.environ.get(v)]
     if missing:
         raise EnvironmentError(f"Missing env vars: {', '.join(missing)}")
@@ -251,8 +255,8 @@ def run_pipeline(repo_name: str, project_path: str, max_parallel: int, start_fro
     if start_from == "orchestrator":
         run_orchestrator(state, project_path)
     if start_from in ("orchestrator", "research"):
-        run_research(state, max_parallel)
-    run_review(state, max_parallel)
+        run_research(state, max_research)
+    run_review(state, max_review)
     print(f"\nPipeline finished in {time.time() - t0:.0f}s.")
 
 
@@ -260,10 +264,11 @@ def main():
     parser = argparse.ArgumentParser(description="BeeWork full pipeline")
     parser.add_argument("--repo", required=True, help="GitHub repo name")
     parser.add_argument("--project", required=True, help="Path to project requirements .md file")
-    parser.add_argument("--max-parallel", type=int, default=3)
+    parser.add_argument("--max-research", type=int, default=5, help="Max parallel researcher agents")
+    parser.add_argument("--max-review", type=int, default=1, help="Max parallel reviewer agents")
     parser.add_argument("--start-from", choices=STAGES, default="orchestrator")
     args = parser.parse_args()
-    run_pipeline(args.repo, args.project, args.max_parallel, args.start_from)
+    run_pipeline(args.repo, args.project, args.max_research, args.max_review, args.start_from)
 
 
 if __name__ == "__main__":

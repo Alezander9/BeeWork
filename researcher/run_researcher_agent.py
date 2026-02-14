@@ -57,11 +57,11 @@ def run_cmd(proc, show=False):
     return proc.returncode
 
 
-def run(topic, prompt, file_path, websites, repo, agent_id=None):
+def run(topic, prompt, file_path, websites, repo, agent_id=None, key_index=0):
     """Run a researcher agent for a single research task."""
-    gemini_key = os.environ.get("GEMINI_API_KEY")
+    gemini_key = os.environ.get(f"GEMINI_API_KEY_{key_index}")
     if not gemini_key:
-        raise EnvironmentError("Set GEMINI_API_KEY")
+        raise EnvironmentError(f"Set GEMINI_API_KEY_{key_index}")
     github_pat = os.environ.get("GITHUB_PAT")
     if not github_pat:
         raise EnvironmentError("Set GITHUB_PAT")
@@ -153,8 +153,9 @@ def main():
     parser.add_argument("--file-path", required=True, help="Path of the KB file to edit")
     parser.add_argument("--websites", required=True, help="Target website URL for research")
     parser.add_argument("--repo", required=True, help="Knowledgebase GitHub repo as owner/repo")
+    parser.add_argument("--key-index", type=int, default=0, help="Which GEMINI_API_KEY_N to use")
     args = parser.parse_args()
-    run(args.topic, args.prompt, args.file_path, args.websites, args.repo)
+    run(args.topic, args.prompt, args.file_path, args.websites, args.repo, key_index=args.key_index)
 
 
 if __name__ == "__main__":
