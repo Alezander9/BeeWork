@@ -28,6 +28,8 @@ image = (
         "OPENCODE_DISABLE_LSP_DOWNLOAD": "true",
     })
     .add_local_dir(str(AGENT_DIR), "/root/code", copy=True)
+    # Trigger one-time DB migration at build time so it never runs at runtime
+    .run_commands("cd /root/code && opencode session list || true")
 )
 
 
