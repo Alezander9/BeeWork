@@ -62,7 +62,7 @@ def main():
 
     Laminar.initialize(project_api_key=lmnr_key)
 
-    app = modal.App.lookup("beework-chat", create_if_missing=True)
+    app = modal.App.lookup("chat-gbt", create_if_missing=True)
     secret = modal.Secret.from_dict({
         "GOOGLE_GENERATIVE_AI_API_KEY": gemini_key,
         "GITHUB_PAT": github_pat,
