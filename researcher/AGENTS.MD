@@ -10,15 +10,18 @@ Git branching, committing, and PR creation are handled automatically after you f
 
 ## Citation format
 
-For all substantive claims, ensure that their is a citation to the URL it came from. The format should be `[^<number>]` and at the bottom of the file, there should be a list of citations in the format:
+For all claims, ensure that their is a citation to the URL it came from. The format should be `[<number>](#ref-<number>)` and at the bottom of the file, there should be a list of citations in the format:
 
 ### Citations
 
-[^1] : <url>
+<a id="ref-1"></a>
+[1] : <url>
 
-[^2] : <url>
+<a id="ref-2"></a>
+[2] : <url>
 
-[^3] : <url>
+<a id="ref-3"></a>
+[3] : <url>
 
 ...
 
