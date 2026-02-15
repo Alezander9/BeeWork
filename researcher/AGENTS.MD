@@ -10,24 +10,26 @@ Git branching, committing, and PR creation are handled automatically after you f
 
 ## Citation format
 
-For all substantive claims, ensure that their is a citation to the URL it came from. The format should be `[<citation number>]` and at the bottom of the file, there should be a list of citations in the format:
+For all substantive claims, ensure that their is a citation to the URL it came from. The format should be `[<number>]` and at the bottom of the file, there should be a list of citations in the format:
 
 ### Citations
 
-[<citation 1>] : <url>
+[1] : <url>
 
-[<citation 2>] : <url>
+[2] : <url>
 
-[<citation 3>] : <url>
+[3] : <url>
 
 ...
+
+Ensure that there is a line break between each citation.
 
 ## Task
 
 Your goal is to contribute correct, verified, clear and low verbosity information to the knowledgebase.
 Your task and **target file** have been given to you in the prompt. Your changes should probably only be in this main file.
 You are working on a knowledge base repo full of information that is verified and cited. 
-You should be **extremely* careful to only introduce verified information, and be as precise as possible. If there is any substantial information that is important but not citable, use citation [-1], and give a brief description of why it is not verifiable. However only do this if the information is particularly important and cannot be verified. Make sure to also address information that is important but unknown or uncertain.
+You should be **extremely* careful to only introduce verified information, and be as precise as possible. Make sure when addressing information that is important but unknown or uncertain, you clearly state the citations that lead to this conclusion.
 Make sure to thoroughly research the prompt and provide a comprehensive answer.
 
 
