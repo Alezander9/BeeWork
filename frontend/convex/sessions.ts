@@ -188,10 +188,11 @@ export const getSession = query({
 
 export const listSessions = query({
   handler: async (ctx) => {
-    return await ctx.db
+    const all = await ctx.db
       .query("sessions")
       .order("desc")
       .collect();
+    return all.filter((s) => !s.hidden);
   },
 });
 

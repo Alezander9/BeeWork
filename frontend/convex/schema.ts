@@ -8,6 +8,7 @@ export default defineSchema({
     researchWorkers: v.number(),
     reviewWorkers: v.number(),
     createdAt: v.number(),
+    hidden: v.optional(v.boolean()),
   }),
 
   logs: defineTable({

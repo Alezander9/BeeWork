@@ -28,7 +28,7 @@ export default function Sessions() {
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [repo, setRepo] = useState("");
-  const [project, setProject] = useState("shared/project_documents/tiny_test.md");
+  const [project, setProject] = useState("shared/project_documents/med_example.md");
   const [researchWorkers, setResearchWorkers] = useState(15);
   const [reviewWorkers, setReviewWorkers] = useState(3);
 
