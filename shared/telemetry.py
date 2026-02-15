@@ -1,10 +1,18 @@
 """BeeWork telemetry -- posts logs and events to Convex for the frontend."""
 
 import os
+import re
 import threading
 import time
 
 import requests
+
+# Patterns stripped from log lines before sending to Convex
+_SCRUB = [
+    (re.compile(r" cost=[\d.eE+-]+"), ""),
+    (re.compile(r",?\s*'cache':\s*\{[^}]*\}"), ""),
+    (re.compile(r"'total':\s*\d+,?\s*"), ""),
+]
 
 FLUSH_INTERVAL = 1.0
 
@@ -47,9 +55,15 @@ def _do_flush():
     _post("/ingest", {"kind": "log", "sessionId": _session_id, "text": text})
 
 
+def _clean(line: str) -> str:
+    for pat, repl in _SCRUB:
+        line = pat.sub(repl, line)
+    return line.replace("\n", "\\n")
+
+
 def log(*lines: str):
     with _buf_lock:
-        _buf.extend(l.replace("\n", "\\n") for l in lines)
+        _buf.extend(_clean(l) for l in lines)
 
 
 def event(event_type: str, data: dict | None = None):

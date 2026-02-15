@@ -219,6 +219,7 @@ def run_tasks(research_tasks, full_repo, num_research, num_review):
 
     msg = f"[pipeline] {len(research_tasks)} tasks, {num_research} research workers, {num_review} review workers"
     print(msg); telemetry.log(msg)
+    telemetry.event("research_agents_started", {"count": num_research, "tasks": len(research_tasks)})
 
     # Wait for all research to finish (sentinels signal exit)
     for _ in range(num_research):

@@ -61,6 +61,7 @@ interface DashboardStats {
   pipelineStatus: string;
   elapsedSeconds: number | null;
   taskCount: number | null;
+  repo: string | null;
 }
 
 function useStats(events: { type: string; data: Record<string, unknown> }[] | undefined): DashboardStats {
@@ -76,6 +77,7 @@ function useStats(events: { type: string; data: Record<string, unknown> }[] | un
       pipelineStatus: "waiting",
       elapsedSeconds: null,
       taskCount: null,
+      repo: null,
     };
     if (!events) return stats;
 
@@ -92,6 +94,7 @@ function useStats(events: { type: string; data: Record<string, unknown> }[] | un
         case "pipeline_started":
           stats.pipelineStatus = "running";
           stats.orchestratorStatus = "running";
+          stats.repo = (d.repo as string) ?? null;
           break;
         case "orchestrator_done":
           stats.taskCount = (d.taskCount as number) ?? null;
@@ -199,6 +202,19 @@ export default function SessionView() {
           </span>
           <span className="text-muted-foreground">/</span>
           <span className="font-mono text-xs">{id}</span>
+          {stats.repo && (
+            <>
+              <span className="text-muted-foreground ml-2">|</span>
+              <a
+                href={`https://github.com/${stats.repo}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent hover:underline text-xs"
+              >
+                {stats.repo}
+              </a>
+            </>
+          )}
         </div>
 
         {/* Stats grid */}
@@ -289,7 +305,7 @@ export default function SessionView() {
           BeeWork
         </h1>
         <div className="flex-1 mx-4 overflow-hidden">
-          <p className="font-mono text-xs text-primary-foreground/80 truncate text-left h-5 leading-5">
+          <p className="font-mono text-lg text-primary-foreground/80 truncate text-left h-6 leading-6">
             {line}
           </p>
         </div>

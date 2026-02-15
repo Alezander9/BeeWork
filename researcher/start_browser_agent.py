@@ -114,6 +114,7 @@ def run_browser_agent(task, website=None, label="agent"):
     if verdict is not None:
         msg = f"[{tag}judge] {verdict}"
         print(msg); telemetry.log(msg)
+        telemetry.event("browser_judge_done", {"agent": tag, "verdict": verdict})
 
     return result
 

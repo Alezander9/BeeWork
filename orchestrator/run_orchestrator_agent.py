@@ -140,6 +140,7 @@ def run(repo_name, project_path, key_index=0):
         )
     msg = f"[{tag}] Sandbox ready ({time.time() - t0:.1f}s)"
     print(msg); telemetry.log(msg)
+    telemetry.event("sandbox_created")
 
     # Check if the repo already exists, create if not, then clone
     safe_repo_name = shlex.quote(repo_name)
@@ -168,7 +169,7 @@ def run(repo_name, project_path, key_index=0):
         msg = f"[{tag}] Failed to create/clone repo"
         print(msg); telemetry.log(msg)
         sb.terminate()
-        return []
+        return {"research_tasks": [], "input_tokens": None, "output_tokens": None}
 
     run_cmd(sb.exec("bash", "-c",
         f"cd {KB_DIR} && git config user.name 'BeeWork' && git config user.email 'beework.buzz@gmail.com'"))
@@ -176,6 +177,7 @@ def run(repo_name, project_path, key_index=0):
     run_cmd(sb.exec("bash", "-c",
         f"cd {KB_DIR} && git remote set-url origin "
         f"https://$GITHUB_PAT@github.com/{OWNER}/{repo_name}.git"))
+    telemetry.event("repo_created", {"repo": repo_name})
 
     # Write PROJECT.MD into the repo and commit as the initial content
     with sb.open(f"{KB_DIR}/PROJECT.MD", "w") as f:
@@ -184,6 +186,7 @@ def run(repo_name, project_path, key_index=0):
         f"cd {KB_DIR} && git add PROJECT.MD && "
         f"git commit -m 'Add project requirements' && git push -u origin HEAD"),
         show=True)
+    telemetry.event("project_read")
 
     # Also place PROJECT.MD at the agent workdir so AGENTS.MD can reference it
     with sb.open("/root/code/PROJECT.MD", "w") as f:
@@ -199,6 +202,7 @@ def run(repo_name, project_path, key_index=0):
         "opencode run --format json 'Follow the instructions in AGENTS.md'",
         pty=True)
     agent_rc = observe_agent_events(proc, MODEL_ID, "orchestrator", label=tag)
+    telemetry.event("structure_built")
 
     # Extract token usage from OpenCode session DB
     token_info = _extract_token_usage(sb)
@@ -219,6 +223,7 @@ def run(repo_name, project_path, key_index=0):
         research_tasks = json.loads(f.read())
     msg = f"[{tag}] Collected {len(research_tasks)} research task(s)"
     print(msg); telemetry.log(msg)
+    telemetry.event("research_tasks_created", {"count": len(research_tasks)})
 
     # Save the agent's work back to the repo
     msg = f"[{tag}] Committing and pushing changes..."
@@ -231,6 +236,7 @@ def run(repo_name, project_path, key_index=0):
     if push_rc != 0:
         msg = f"[{tag}] Warning: failed to push changes"
         print(msg); telemetry.log(msg)
+    telemetry.event("changes_pushed", {"success": push_rc == 0})
 
     sb.terminate()
     msg = f"[{tag}] exit code: {agent_rc}"
