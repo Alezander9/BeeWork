@@ -17,7 +17,7 @@ The PR number and repo are provided in your prompt.
 1. Get the repo identifier from `git -C knowledgebase remote get-url origin`.
 2. Check out the PR branch: `cd knowledgebase && gh pr checkout <number> -R <repo>`
 3. View the PR diff: `gh pr diff <number> -R <repo>`
-4. Read the changed files in full to understand context beyond just the diff.
+4. Read the changed files in full to understand context beyond just the diff. It may be useful to also add local markdown links to other files within the repository to make it easier to navigate.
 5. Evaluate the PR against these rejection criteria:
    - **Uncited information**: Every factual claim must have a citation. Reject uncited claims.
       - Uncited information that is important and cannot be verified should be given a citation [-1]. However make sure to ensure that the information is relevant and would actually be hard to verify.
