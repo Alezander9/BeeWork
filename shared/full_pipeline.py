@@ -53,7 +53,8 @@ def _run_with_timeout(fn, label, timeout=TASK_TIMEOUT):
     t.start()
     t.join(timeout=timeout)
     if t.is_alive():
-        print(f"[timeout] {label} still running after {timeout}s -- skipping")
+        msg = f"[timeout] {label} still running after {timeout}s -- skipping"
+        print(msg); telemetry.log(msg)
         return None
     if "error" in result:
         raise result["error"]
@@ -94,14 +95,17 @@ def research_worker(research_q, review_q, full_repo):
                     "research_agent_id": slug,
                     "key_index": task["key_index"],
                 })
-                print(f"[research] Done: {slug} -> PR #{pr}")
+                msg = f"[research] Done: {slug} -> PR #{pr}"
+                print(msg); telemetry.log(msg)
                 telemetry.event("researcher_done", {"agent_id": slug, "pr": pr})
                 telemetry.event("pr_created", {"pr": pr, "agent_id": slug, "repo": full_repo})
             else:
-                print(f"[research] No PR: {slug}")
+                msg = f"[research] No PR: {slug}"
+                print(msg); telemetry.log(msg)
                 telemetry.event("researcher_done", {"agent_id": slug, "pr": None})
         except Exception as e:
-            print(f"[research] Failed: {slug} -- {e}")
+            msg = f"[research] Failed: {slug} -- {e}"
+            print(msg); telemetry.log(msg)
             telemetry.event("researcher_done", {"agent_id": slug, "error": str(e)})
 
 
@@ -162,10 +166,12 @@ def review_worker(review_q, full_repo, files_under_review, review_lock, done_eve
                 ),
                 label=review_label,
             )
-            print(f"[review] Done: PR #{task['pr']} ({task['research_agent_id']})")
+            msg = f"[review] Done: PR #{task['pr']} ({task['research_agent_id']})"
+            print(msg); telemetry.log(msg)
             telemetry.event("reviewer_done", {"pr": task["pr"], "agent_id": task["research_agent_id"]})
         except Exception as e:
-            print(f"[review] Failed: PR #{task['pr']} -- {e}")
+            msg = f"[review] Failed: PR #{task['pr']} -- {e}"
+            print(msg); telemetry.log(msg)
             telemetry.event("reviewer_done", {"pr": task["pr"], "error": str(e)})
         finally:
             with review_lock:
@@ -179,7 +185,8 @@ def review_worker(review_q, full_repo, files_under_review, review_lock, done_eve
 def run_tasks(research_tasks, full_repo, num_research, num_review):
     """Run research and review concurrently using two queues."""
     if not research_tasks:
-        print("[pipeline] No tasks.")
+        msg = "[pipeline] No tasks."
+        print(msg); telemetry.log(msg)
         return
 
     research_q = queue.Queue()
@@ -210,20 +217,24 @@ def run_tasks(research_tasks, full_repo, num_research, num_review):
         t.start()
         research_threads.append(t)
 
-    print(f"[pipeline] {len(research_tasks)} tasks, {num_research} research workers, {num_review} review workers")
+    msg = f"[pipeline] {len(research_tasks)} tasks, {num_research} research workers, {num_review} review workers"
+    print(msg); telemetry.log(msg)
+    telemetry.event("research_agents_started", {"count": num_research, "tasks": len(research_tasks)})
 
     # Wait for all research to finish (sentinels signal exit)
     for _ in range(num_research):
         research_q.put(None)
     for t in research_threads:
         t.join()
-    print("[pipeline] All research done.")
+    msg = "[pipeline] All research done."
+    print(msg); telemetry.log(msg)
 
     # Signal review workers: no more items coming. They exit once queue + deferred are drained.
     review_done.set()
     for t in review_threads:
         t.join()
-    print("[pipeline] All reviews done.")
+    msg = "[pipeline] All reviews done."
+    print(msg); telemetry.log(msg)
 
 
 def run_pipeline(repo_name, project_path, num_research, num_review, session_id=None):
@@ -236,7 +247,8 @@ def run_pipeline(repo_name, project_path, num_research, num_review, session_id=N
         raise EnvironmentError(f"Missing env vars: {', '.join(missing)}")
 
     full_repo = f"{OWNER}/{repo_name}"
-    print(f"Pipeline: repo={full_repo}")
+    msg = f"[pipeline] repo={full_repo}, research={num_research}, review={num_review}"
+    print(msg); telemetry.log(msg)
     t0 = time.time()
 
     telemetry.event("pipeline_started", {
@@ -250,12 +262,17 @@ def run_pipeline(repo_name, project_path, num_research, num_review, session_id=N
     tasks = result["research_tasks"]
     for task in tasks:
         task["research_agent_id"] = _topic_slug(task.get("topic", "unknown"))
-    print(f"[orchestrator] {len(tasks)} task(s)")
+    msg = f"[orchestrator] {len(tasks)} task(s)"
+    print(msg); telemetry.log(msg)
+    for task in tasks:
+        msg = f"[pipeline] Task: {task['research_agent_id']} -> {task.get('file_path', '?')}"
+        print(msg); telemetry.log(msg)
     telemetry.event("orchestrator_done", {"taskCount": len(tasks)})
 
     run_tasks(tasks, full_repo, num_research, num_review)
     elapsed = time.time() - t0
-    print(f"\nPipeline finished in {elapsed:.0f}s.")
+    msg = f"[pipeline] Finished in {elapsed:.0f}s"
+    print(msg); telemetry.log(msg)
     telemetry.event("pipeline_done", {"elapsedSeconds": int(elapsed)})
     telemetry.status("completed")
     telemetry.flush()

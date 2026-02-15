@@ -7,9 +7,11 @@ import base64
 import json
 import os
 import shlex
+import time
 from dotenv import load_dotenv
 import modal
 from lmnr import Laminar
+from shared import telemetry
 from shared.tracing import observe_agent_events
 from researcher.start_browser_agent import run_browser_agent
 
@@ -78,10 +80,12 @@ def run(topic, prompt, file_path, websites, repo, agent_id=None, key_index=0, la
     Laminar.initialize(project_api_key=lmnr_key)
 
     # --- Step 1: Run browser agent locally ---
-    print(f"[{tag}] Running browser agent for: {websites}")
+    msg = f"[{tag}] Running browser agent for: {websites}"
+    print(msg); telemetry.log(msg)
     browser_result = run_browser_agent(task=prompt, website=websites, label=tag)
     result_json = json.dumps(browser_result, indent=2)
-    print(f"[{tag}] Browser agent finished (status: {browser_result.get('status', 'unknown')})")
+    msg = f"[{tag}] Browser agent finished (status: {browser_result.get('status', 'unknown')})"
+    print(msg); telemetry.log(msg)
 
     # --- Step 2: Create Modal sandbox ---
     app = modal.App.lookup("beework-worker", create_if_missing=True)
@@ -91,17 +95,22 @@ def run(topic, prompt, file_path, websites, repo, agent_id=None, key_index=0, la
         "GH_TOKEN": github_pat,
     })
 
-    print(f"[{tag}] Creating sandbox...")
+    msg = f"[{tag}] Creating sandbox..."
+    print(msg); telemetry.log(msg)
+    t0 = time.time()
     with modal.enable_output():
         sb = modal.Sandbox.create(
             "sleep", "infinity",
             image=image, secrets=[secret], app=app,
             workdir="/root/code", timeout=10 * MINUTES,
         )
+    msg = f"[{tag}] Sandbox ready ({time.time() - t0:.1f}s)"
+    print(msg); telemetry.log(msg)
 
     # Clone the knowledgebase repo
     clone_url = f"https://x-access-token:$GITHUB_PAT@github.com/{repo}.git"
-    print(f"[{tag}] Cloning {repo} into {KB_DIR}...")
+    msg = f"[{tag}] Cloning {repo}..."
+    print(msg); telemetry.log(msg)
     rc = run_cmd(sb.exec("bash", "-c", f"git clone {clone_url} {KB_DIR}"), show=True)
     if rc != 0:
         sb.terminate()
@@ -121,7 +130,8 @@ def run(topic, prompt, file_path, websites, repo, agent_id=None, key_index=0, la
     encoded_output = base64.b64encode(output_text.encode()).decode()
     run_cmd(sb.exec("bash", "-c",
         f"echo '{encoded_output}' | base64 -d > {BROWSER_OUTPUT_PATH}"))
-    print(f"[{tag}] Browser results written to sandbox")
+    msg = f"[{tag}] Browser results written to sandbox"
+    print(msg); telemetry.log(msg)
 
     # --- Step 4: Run OpenCode agent ---
     agent_prompt = (
@@ -135,7 +145,8 @@ def run(topic, prompt, file_path, websites, repo, agent_id=None, key_index=0, la
 
     # Run agent with --format json for structured JSONL output
     # pty=True is required -- OpenCode hangs on Modal without a pseudo-terminal
-    print(f"[{tag}] Running agent (model: {MODEL_ID})...")
+    msg = f"[{tag}] Running agent (model: {MODEL_ID})..."
+    print(msg); telemetry.log(msg)
     proc = sb.exec("bash", "-c",
         f"opencode run --format json {shlex.quote(agent_prompt)}",
         pty=True)
@@ -165,7 +176,11 @@ def run(topic, prompt, file_path, websites, repo, agent_id=None, key_index=0, la
     pr_number = int(pr_raw) if pr_raw.isdigit() else None
 
     sb.terminate()
-    print(f"[{tag}] exit code: {rc}, pr: {pr_number}")
+    if pr_number:
+        msg = f"[{tag}] PR #{pr_number} created: https://github.com/{repo}/pull/{pr_number}"
+        print(msg); telemetry.log(msg)
+    msg = f"[{tag}] exit code: {rc}"
+    print(msg); telemetry.log(msg)
     return pr_number
 
 

@@ -6,9 +6,11 @@ import argparse
 import json
 import os
 import shlex
+import time
 from dotenv import load_dotenv
 import modal
 from lmnr import Laminar
+from shared import telemetry
 from shared.tracing import observe_agent_events
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -73,16 +75,21 @@ def run(repo, pr, agent_id=None, key_index=0, label=None):
         "GH_TOKEN": github_pat,
     })
 
-    print(f"[{tag}] Creating sandbox...")
+    msg = f"[{tag}] Creating sandbox..."
+    print(msg); telemetry.log(msg)
+    t0 = time.time()
     with modal.enable_output():
         sb = modal.Sandbox.create(
             "sleep", "infinity",
             image=image, secrets=[secret], app=app,
             workdir="/root/code", timeout=20 * MINUTES,
         )
+    msg = f"[{tag}] Sandbox ready ({time.time() - t0:.1f}s)"
+    print(msg); telemetry.log(msg)
 
     clone_url = f"https://x-access-token:$GITHUB_PAT@github.com/{repo}.git"
-    print(f"[{tag}] Cloning {repo} into {KB_DIR}...")
+    msg = f"[{tag}] Cloning {repo}..."
+    print(msg); telemetry.log(msg)
     rc = run_cmd(sb.exec("bash", "-c", f"git clone {clone_url} {KB_DIR}"), show=True)
     if rc != 0:
         sb.terminate()
@@ -93,15 +100,27 @@ def run(repo, pr, agent_id=None, key_index=0, label=None):
         f"cd {KB_DIR} && git config user.name 'BeeWork' && git config user.email 'beework.buzz@gmail.com'"))
 
     prompt = f"Review PR #{pr} on repo {repo}. Follow the instructions in AGENTS.md."
-    print(f"[{tag}] Running agent (model: {MODEL_ID}), reviewing PR #{pr}...")
+    msg = f"[{tag}] Running agent (model: {MODEL_ID}), reviewing PR #{pr}..."
+    print(msg); telemetry.log(msg)
     proc = sb.exec("bash", "-c",
         f"opencode run --format json {shlex.quote(prompt)}",
         pty=True)
     trace_meta = {"research_agent_id": agent_id, "pr": pr} if agent_id else {}
     rc = observe_agent_events(proc, MODEL_ID, "reviewer", metadata=trace_meta, label=tag)
 
+    # Check PR outcome (MERGED / CLOSED / OPEN)
+    pr_state_proc = sb.exec("bash", "-c",
+        f"cd {KB_DIR} && gh pr view {pr} --json state --jq '.state'")
+    pr_state_raw = "".join(pr_state_proc.stdout).strip().lower()
+    pr_state_proc.wait()
+    pr_state = pr_state_raw if pr_state_raw in ("merged", "closed", "open") else "unknown"
+    msg = f"[{tag}] PR #{pr} state: {pr_state}"
+    print(msg); telemetry.log(msg)
+    telemetry.event("pr_reviewed", {"pr": pr, "agent_id": agent_id, "state": pr_state})
+
     sb.terminate()
-    print(f"[{tag}] exit code: {rc}")
+    msg = f"[{tag}] exit code: {rc}"
+    print(msg); telemetry.log(msg)
 
 
 def main():
