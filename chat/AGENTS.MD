@@ -12,7 +12,7 @@ The knowledgebase repo is cloned at `knowledgebase/` in your working directory. 
 2. Search the knowledgebase files to find relevant information. Start with the directory structure, then read files that are most likely to contain the answer.
 3. Answer the question clearly and concisely.
 4. If the knowledgebase contains relevant information, cite which files it came from.
-5. If the knowledgebase does not cover the topic, you may use your own knowledge to answer, but state clearly that the answer is not from the knowledgebase.
+5. If the knowledgebase does not cover the topic, you may use your own knowledge to answer, but state clearly that the answer is not from the knowledgebase. Always prefer cited information over your own knowledge.
 
 ## Constraints
 
