@@ -1,20 +1,22 @@
 Project for Treehacks 2026
 
-# Small example:
-uv run .\shared\full_pipeline.py --repo 4-35 --project .\shared\project_documents\small_test.md
+BeeWork
+Unleashing the Hive to BEEat the context window
 
-Should complete in (made 12 research tasks)
-bu researchers each take 40-80s
-at 2:30s start seeing PRs
-First reviewer done at 4:30s
-Reviewers take 80-120s
-First whole bath is done at 7mins
+## Inspiration
 
+Agents have limited context window, how do we create extremely high quality and verifiable responses from the web?
 
-New test 
-uv run .\shared\full_pipeline.py --repo 4-45 --project .\shared\project_documents\small_test.md --max-parallel 15
+## What it does
 
+Create a "knowledge base" on some topic (basically a wiki, and literally a git repo), with hundreds of browser agents (spawned through an orchestrator) created rigorously cited and specific prs into the repo. Then we have review agents that ensures that only prs are merged after meeting strict adversarial standards.  From here a chat agent can navigate the repo to find specific information, and answer questions, with citations to specific docs where more information can be found.
 
-cloudflared tunnel run beework
-Start fast api server for web control
-uv run uvicorn server.main:app --host 0.0.0.0 --port 8000
+## What's next for BeeWork
+stanford roomates -> lovers -> cofounders
+
+## Links
+Slides: https://docs.google.com/presentation/d/1KGqUSn83BWOUU2tRIQxokh2dywbUY973HnNFKA0ZciM/edit?usp=sharing
+Devpost: https://devpost.com/software/beework
+GitHub: https://github.com/Alezander9/BeeWork
+Website: https://beework.cc/
+Demo: https://youtu.be/YL_5W60JScc
