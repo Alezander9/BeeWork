@@ -20,6 +20,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
+from shared import telemetry
+
 OWNER = "workerbee-gbt"
 NUM_GEMINI_KEYS = 5
 REVIEW_POLL_INTERVAL = 2.0
@@ -69,6 +71,7 @@ def research_worker(research_q, review_q, full_repo):
         if task is None:
             break
         slug = task["research_agent_id"]
+        telemetry.event("researcher_started", {"agent_id": slug, "topic": task["topic"]})
         try:
             from researcher.run_researcher_agent import run as research
             pr = _run_with_timeout(
@@ -92,10 +95,14 @@ def research_worker(research_q, review_q, full_repo):
                     "key_index": task["key_index"],
                 })
                 print(f"[research] Done: {slug} -> PR #{pr}")
+                telemetry.event("researcher_done", {"agent_id": slug, "pr": pr})
+                telemetry.event("pr_created", {"pr": pr, "agent_id": slug, "repo": full_repo})
             else:
                 print(f"[research] No PR: {slug}")
+                telemetry.event("researcher_done", {"agent_id": slug, "pr": None})
         except Exception as e:
             print(f"[research] Failed: {slug} -- {e}")
+            telemetry.event("researcher_done", {"agent_id": slug, "error": str(e)})
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +148,7 @@ def review_worker(review_q, full_repo, files_under_review, review_lock, done_eve
                     continue
                 files_under_review.add(task["file_path"])
 
+        telemetry.event("reviewer_started", {"pr": task["pr"], "agent_id": task["research_agent_id"]})
         try:
             from reviewer.run_reviewer_agent import run as review
             review_label = f"review:PR#{task['pr']}"
@@ -155,8 +163,10 @@ def review_worker(review_q, full_repo, files_under_review, review_lock, done_eve
                 label=review_label,
             )
             print(f"[review] Done: PR #{task['pr']} ({task['research_agent_id']})")
+            telemetry.event("reviewer_done", {"pr": task["pr"], "agent_id": task["research_agent_id"]})
         except Exception as e:
             print(f"[review] Failed: PR #{task['pr']} -- {e}")
+            telemetry.event("reviewer_done", {"pr": task["pr"], "error": str(e)})
         finally:
             with review_lock:
                 files_under_review.discard(task["file_path"])
@@ -216,7 +226,11 @@ def run_tasks(research_tasks, full_repo, num_research, num_review):
     print("[pipeline] All reviews done.")
 
 
-def run_pipeline(repo_name, project_path, num_research, num_review):
+def run_pipeline(repo_name, project_path, num_research, num_review, session_id=None):
+    if session_id:
+        telemetry.init(session_id)
+        telemetry.status("running")
+
     missing = [v for v in REQUIRED_ENV_VARS if not os.environ.get(v)]
     if missing:
         raise EnvironmentError(f"Missing env vars: {', '.join(missing)}")
@@ -225,15 +239,26 @@ def run_pipeline(repo_name, project_path, num_research, num_review):
     print(f"Pipeline: repo={full_repo}")
     t0 = time.time()
 
+    telemetry.event("pipeline_started", {
+        "repo": full_repo,
+        "researchWorkers": num_research,
+        "reviewWorkers": num_review,
+    })
+
     from orchestrator.run_orchestrator_agent import run as orchestrate
     result = orchestrate(repo_name, project_path)
     tasks = result["research_tasks"]
     for task in tasks:
         task["research_agent_id"] = _topic_slug(task.get("topic", "unknown"))
     print(f"[orchestrator] {len(tasks)} task(s)")
+    telemetry.event("orchestrator_done", {"taskCount": len(tasks)})
 
     run_tasks(tasks, full_repo, num_research, num_review)
-    print(f"\nPipeline finished in {time.time() - t0:.0f}s.")
+    elapsed = time.time() - t0
+    print(f"\nPipeline finished in {elapsed:.0f}s.")
+    telemetry.event("pipeline_done", {"elapsedSeconds": int(elapsed)})
+    telemetry.status("completed")
+    telemetry.flush()
 
 
 def main():
@@ -242,8 +267,9 @@ def main():
     parser.add_argument("--project", required=True)
     parser.add_argument("--research-workers", type=int, default=5)
     parser.add_argument("--review-workers", type=int, default=2)
+    parser.add_argument("--session-id", default=None)
     args = parser.parse_args()
-    run_pipeline(args.repo, args.project, args.research_workers, args.review_workers)
+    run_pipeline(args.repo, args.project, args.research_workers, args.review_workers, args.session_id)
 
 
 if __name__ == "__main__":

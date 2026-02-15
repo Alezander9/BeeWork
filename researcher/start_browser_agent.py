@@ -1,10 +1,14 @@
 import argparse
 import json
 import os
+import sys
 import time
 from pathlib import Path
 
 import requests
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from shared import telemetry
 
 BASE_URL = "https://api.browser-use.com/api/v2"
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -79,6 +83,7 @@ def run_browser_agent(task, website=None, label="agent"):
     print(f"[{tag}session] {session_id}")
     if live_url:
         print(f"[{tag}live] {live_url}")
+        telemetry.event("browser_url", {"url": live_url, "agent": tag})
 
     # Start the task in the session
     task_resp = create_task(session_id, task, website)

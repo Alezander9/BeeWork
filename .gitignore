@@ -1,6 +1,7 @@
 temp/
 */browser_agent_output/
 pipeline_runs/
+pipeline_logs.txt
 
 
 

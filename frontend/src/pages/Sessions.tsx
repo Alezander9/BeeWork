@@ -1,36 +1,59 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useAction } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import SettingsDialog from "@/components/SettingsDialog";
 import { getAdminToken } from "@/lib/auth";
-import { createSession } from "@/lib/api";
-
-const DUMMY_SESSIONS = [
-  { id: "a1b2c3", repo: "california-rng", tasks: 4, status: "completed", date: "2026-02-14" },
-  { id: "d4e5f6", repo: "tiny-test", tasks: 2, status: "in_progress", date: "2026-02-14" },
-  { id: "g7h8i9", repo: "small-test", tasks: 3, status: "failed", date: "2026-02-13" },
-];
 
 const STATUS_STYLES: Record<string, string> = {
   completed: "text-green-700 bg-green-100",
-  in_progress: "text-bee-yellow bg-secondary",
+  running: "text-bee-yellow bg-secondary",
+  pending: "text-muted-foreground bg-muted",
   failed: "text-destructive bg-red-50",
 };
 
 export default function Sessions() {
   const navigate = useNavigate();
+  const sessions = useQuery(api.sessions.listSessions);
+  const startSession = useAction(api.sessions.startSession);
   const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [repo, setRepo] = useState("");
+  const [project, setProject] = useState("shared/project_documents/california_rng_deep.md");
+  const [researchWorkers, setResearchWorkers] = useState(15);
+  const [reviewWorkers, setReviewWorkers] = useState(3);
 
-  async function handleNewSession() {
-    const token = getAdminToken();
-    if (!token) {
+  async function handleCreate() {
+    const secret = getAdminToken();
+    if (!secret) {
       alert("Set your admin credentials first (bee icon, bottom-right).");
       return;
     }
+    if (!repo.trim()) return;
     setLoading(true);
     try {
-      await createSession(token);
+      const sessionId = await startSession({
+        repo: repo.trim(),
+        researchWorkers,
+        reviewWorkers,
+        project: project.trim(),
+        secret,
+      });
+      console.log("[beework] session created", sessionId);
+      setOpen(false);
+      setRepo("");
+      navigate(`/sessions/${sessionId}`);
     } catch (e: unknown) {
+      console.error("[beework] session failed", e);
       alert(e instanceof Error ? e.message : "Request failed");
     } finally {
       setLoading(false);
@@ -42,35 +65,90 @@ export default function Sessions() {
       <main className="max-w-3xl mx-auto px-6 py-10">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold">Sessions</h2>
-          <Button onClick={handleNewSession} disabled={loading}>
-            {loading ? "Creating..." : "New Session"}
-          </Button>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button>New Session</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle>New Pipeline Session</DialogTitle>
+              </DialogHeader>
+              <div className="flex flex-col gap-3 pt-2">
+                <Input
+                  placeholder="Repository name"
+                  value={repo}
+                  onChange={(e) => setRepo(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+                />
+                <div>
+                  <label className="text-xs text-muted-foreground">Project document</label>
+                  <Input
+                    placeholder="shared/project_documents/..."
+                    value={project}
+                    onChange={(e) => setProject(e.target.value)}
+                    className="font-mono text-xs"
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className="text-xs text-muted-foreground">Research workers</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={researchWorkers}
+                      onChange={(e) => setResearchWorkers(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-xs text-muted-foreground">Review workers</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={reviewWorkers}
+                      onChange={(e) => setReviewWorkers(Number(e.target.value))}
+                    />
+                  </div>
+                </div>
+                <Button onClick={handleCreate} disabled={loading || !repo.trim()}>
+                  {loading ? "Creating..." : "Start Pipeline"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
 
         <div className="border border-border bg-background">
-          <div className="grid grid-cols-[1fr_80px_120px_100px] gap-4 px-4 py-2 text-sm font-medium text-muted-foreground border-b border-border">
+          <div className="grid grid-cols-[1fr_80px_120px_140px] gap-4 px-4 py-2 text-sm font-medium text-muted-foreground border-b border-border">
             <span>Repository</span>
-            <span>Tasks</span>
+            <span>Workers</span>
             <span>Status</span>
-            <span>Date</span>
+            <span>Created</span>
           </div>
 
-          {DUMMY_SESSIONS.map((session) => (
-            <div
-              key={session.id}
-              className="grid grid-cols-[1fr_80px_120px_100px] gap-4 px-4 py-3 text-sm border-b border-border last:border-b-0 hover:bg-secondary/50 cursor-pointer transition-colors"
-              onClick={() => navigate(`/sessions/${session.id}`)}
-            >
-              <span className="font-medium">{session.repo}</span>
-              <span>{session.tasks}</span>
-              <span>
-                <span className={`px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[session.status] ?? ""}`}>
-                  {session.status.replace("_", " ")}
+          {sessions === undefined ? (
+            <div className="px-4 py-6 text-sm text-muted-foreground text-center">Loading...</div>
+          ) : sessions.length === 0 ? (
+            <div className="px-4 py-6 text-sm text-muted-foreground text-center">No sessions yet</div>
+          ) : (
+            sessions.map((s) => (
+              <div
+                key={s._id}
+                className="grid grid-cols-[1fr_80px_120px_140px] gap-4 px-4 py-3 text-sm border-b border-border last:border-b-0 hover:bg-secondary/50 cursor-pointer transition-colors"
+                onClick={() => navigate(`/sessions/${s._id}`)}
+              >
+                <span className="font-medium">{s.repo}</span>
+                <span>{s.researchWorkers + s.reviewWorkers}</span>
+                <span>
+                  <span className={`px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[s.status] ?? ""}`}>
+                    {s.status}
+                  </span>
                 </span>
-              </span>
-              <span className="text-muted-foreground">{session.date}</span>
-            </div>
-          ))}
+                <span className="text-muted-foreground">
+                  {new Date(s.createdAt).toLocaleDateString()}
+                </span>
+              </div>
+            ))
+          )}
         </div>
       </main>
 
