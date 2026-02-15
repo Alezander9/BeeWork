@@ -1,99 +1,168 @@
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 import argparse
 import json
 import os
-import shlex
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
 from dotenv import load_dotenv
-import modal
-from lmnr import Laminar
-from shared.tracing import observe_agent_events
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
-MINUTES = 60
 AGENT_DIR = Path(__file__).parent
-KB_DIR = "/root/code/knowledgebase"
-
-# Read model from opencode.json so we can tag LLM spans
-OPENCODE_CONFIG = json.loads((AGENT_DIR / "opencode.json").read_text())
-MODEL_ID = OPENCODE_CONFIG.get("agent", {}).get("build", {}).get("model", "unknown")
-
-# Container image: Debian + OpenCode + agent dir
-image = (
-    modal.Image.debian_slim()
-    .apt_install("curl", "git")
-    .run_commands("curl -fsSL https://opencode.ai/install | bash")
-    .env({
-        "PATH": "/root/.opencode/bin:/usr/local/bin:/usr/bin:/bin",
-        "OPENCODE_DISABLE_AUTOUPDATE": "true",
-        "OPENCODE_DISABLE_LSP_DOWNLOAD": "true",
-    })
-    .add_local_dir(str(AGENT_DIR), "/root/code", copy=True)
-    .run_commands("cd /root/code && opencode session list || true")
-)
 
 
-def run_cmd(proc, show=False):
-    if show:
-        for line in proc.stdout:
-            print(line, end="")
+def setup_workspace(repo, use_kb=True):
+    owner, name = repo.split("/")
+    suffix = f"{owner}-{name}" if use_kb else f"{owner}-{name}-no-kb"
+    workspace = Path.home() / ".beework" / suffix
+
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    config = json.loads((AGENT_DIR / "opencode.json").read_text())
+    if not use_kb:
+        config["agent"]["build"]["tools"]["bash"] = False
+    (workspace / "opencode.json").write_text(json.dumps(config, indent=2))
+
+    if use_kb:
+        shutil.copy(AGENT_DIR / "AGENTS.md", workspace / "AGENTS.md")
+        kb_dir = workspace / "knowledgebase"
+        if (kb_dir / ".git").exists():
+            print(f"Updating {repo}...")
+            subprocess.run(["git", "-C", str(kb_dir), "pull", "--ff-only"], check=False)
+        else:
+            print(f"Cloning {repo}...")
+            pat = os.environ.get("GITHUB_PAT", "")
+            url = f"https://x-access-token:{pat}@github.com/{repo}.git"
+            subprocess.run(["git", "clone", url, str(kb_dir)], check=True)
+
+    return workspace
+
+
+def parse_events(proc):
+    buf = ""
+    response_parts = []
+    for line in proc.stdout:
+        line = line.replace("\r", "")
+        for fragment in line.split("\n"):
+            fragment = fragment.strip()
+            if not fragment:
+                continue
+            buf += fragment
+            try:
+                event = json.loads(buf)
+                buf = ""
+            except json.JSONDecodeError:
+                continue
+
+            etype = event.get("type")
+            part = event.get("part", {})
+
+            if etype == "text":
+                text = part.get("text", "")
+                response_parts.append(text)
+                print(text)
+            elif etype == "tool_use":
+                state = part.get("state", {})
+                tool = part.get("tool", "unknown")
+                inp = state.get("input", {})
+                out = state.get("output", "")
+                print(f"\n--- [{tool}] ---")
+                if isinstance(inp, dict) and inp.get("command"):
+                    print(f"$ {inp['command']}")
+                elif isinstance(inp, str):
+                    print(inp[:500])
+                if out:
+                    out_str = out if isinstance(out, str) else json.dumps(out)
+                    if len(out_str) > 1000:
+                        out_str = out_str[:1000] + "..."
+                    print(out_str)
+                print(f"--- end [{tool}] ---\n")
+            elif etype == "step_start":
+                print("thinking...", flush=True)
+            elif etype == "step_finish":
+                tokens = part.get("tokens", {})
+                cost = part.get("cost", 0)
+                print(f"[tokens: in={tokens.get('input', 0)} out={tokens.get('output', 0)} cost=${cost:.4f}]")
+            elif etype == "error":
+                print(f"[error] {event.get('error', {})}")
+
+    if buf.strip():
+        print(f"[unparsed] {buf[:200]}")
     proc.wait()
-    return proc.returncode
+    return "\n".join(response_parts)
+
+
+def build_prompt(question, history, use_kb=True):
+    parts = []
+    if use_kb:
+        parts.append("Follow the instructions in AGENTS.md.")
+    if history:
+        parts.append("\n## Previous conversation:")
+        for turn in history:
+            parts.append(f"User: {turn['question']}")
+            answer = turn["answer"]
+            if len(answer) > 500:
+                answer = answer[:500] + "..."
+            parts.append(f"Assistant: {answer}")
+        parts.append("")
+    parts.append(f"## Current question:\n{question}")
+    return "\n".join(parts)
+
+
+def run_turn(workspace, question, history, use_kb=True):
+    prompt = build_prompt(question, history, use_kb)
+    env = os.environ.copy()
+    env["GOOGLE_GENERATIVE_AI_API_KEY"] = os.environ["GEMINI_API_KEY_0"]
+    env["OPENCODE_DISABLE_AUTOUPDATE"] = "true"
+    env["OPENCODE_DISABLE_LSP_DOWNLOAD"] = "true"
+
+    proc = subprocess.Popen(
+        ["opencode", "run", "--format", "json", prompt],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        cwd=str(workspace),
+        env=env,
+        text=True,
+    )
+    return parse_events(proc)
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--repo", required=True, help="Knowledgebase GitHub repo as owner/repo")
-    parser.add_argument("--question", required=True, help="Question to answer from the knowledgebase")
+    parser = argparse.ArgumentParser(description="BeeWork KB chatbot")
+    parser.add_argument("--repo", required=True, help="GitHub repo as owner/repo")
+    parser.add_argument("--no-kb", action="store_true", help="Run without knowledgebase (model only)")
     args = parser.parse_args()
+    use_kb = not args.no_kb
 
-    gemini_key = os.environ.get("GEMINI_API_KEY_0")
-    if not gemini_key:
-        raise EnvironmentError("Set GEMINI_API_KEY_0")
-    github_pat = os.environ.get("GITHUB_PAT")
-    if not github_pat:
-        raise EnvironmentError("Set GITHUB_PAT")
-    lmnr_key = os.environ.get("LMNR_PROJECT_API_KEY")
-    if not lmnr_key:
-        raise EnvironmentError("Set LMNR_PROJECT_API_KEY")
+    if not os.environ.get("GEMINI_API_KEY_0"):
+        print("Set GEMINI_API_KEY_0 in .env")
+        sys.exit(1)
 
-    Laminar.initialize(project_api_key=lmnr_key)
+    workspace = setup_workspace(args.repo, use_kb)
+    history = []
 
-    app = modal.App.lookup("chat-gbt", create_if_missing=True)
-    secret = modal.Secret.from_dict({
-        "GOOGLE_GENERATIVE_AI_API_KEY": gemini_key,
-        "GITHUB_PAT": github_pat,
-    })
+    mode = "with KB" if use_kb else "no KB (model only)"
+    print(f"\nBeeWork chat -- {args.repo} [{mode}]")
+    print("Type your question. 'q' to quit.\n")
 
-    print(f"Creating sandbox...")
-    with modal.enable_output():
-        sb = modal.Sandbox.create(
-            "sleep", "infinity",
-            image=image, secrets=[secret], app=app,
-            workdir="/root/code", timeout=5 * MINUTES,
-        )
+    while True:
+        try:
+            question = input("you> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nbye")
+            break
+        if not question:
+            continue
+        if question.lower() in ("q", "quit", "exit"):
+            print("bye")
+            break
 
-    # Clone the knowledgebase repo
-    clone_url = f"https://x-access-token:$GITHUB_PAT@github.com/{args.repo}.git"
-    print(f"Cloning {args.repo} into {KB_DIR}...")
-    rc = run_cmd(sb.exec("bash", "-c", f"git clone {clone_url} {KB_DIR}"), show=True)
-    if rc != 0:
-        print("Failed to clone repo")
-        sb.terminate()
-        return
-
-    prompt = f"Question: {args.question}. Follow the instructions in AGENTS.md."
-    print(f"Running agent (model: {MODEL_ID})...")
-    proc = sb.exec("bash", "-c",
-        f"opencode run --format json {shlex.quote(prompt)}",
-        pty=True)
-    rc = observe_agent_events(proc, MODEL_ID, "chat")
-
-    sb.terminate()
-    print(f"exit code: {rc}")
+        print()
+        answer = run_turn(workspace, question, history, use_kb)
+        history.append({"question": question, "answer": answer})
+        print()
 
 
 if __name__ == "__main__":
