@@ -8,6 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getAdminToken } from "@/lib/auth";
 
+const PROMPT_PRESETS = [
+  { name: "Medical", prompt: "Which complement proteins tag weak synapses for elimination in the context of Alzheimers disease" },
+];
+
 function ResponsePanel({
   title,
   loading,
@@ -47,6 +51,7 @@ export default function ChatOverlay({ defaultRepo }: { defaultRepo?: string }) {
     if (defaultRepo && !repo) setRepo(defaultRepo);
   }, [defaultRepo]);
   const [prompt, setPrompt] = useState("");
+  const [presetsOpen, setPresetsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   type Result = { response: string | null; error: string | null };
   const empty: Result = { response: null, error: null };
@@ -144,7 +149,30 @@ export default function ChatOverlay({ defaultRepo }: { defaultRepo?: string }) {
 
               {/* Prompt */}
               <div className="mb-4">
-                <Label className="text-xs text-muted-foreground mb-1">Prompt</Label>
+                <div className="flex items-center gap-2 mb-1">
+                  <Label className="text-xs text-muted-foreground">Prompt</Label>
+                  <div className="relative">
+                    <button
+                      onClick={() => setPresetsOpen(!presetsOpen)}
+                      className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+                    >
+                      saved
+                    </button>
+                    {presetsOpen && (
+                      <div className="absolute top-6 left-0 z-50 w-64 border border-border bg-background shadow-lg rounded-md py-1">
+                        {PROMPT_PRESETS.map((p) => (
+                          <button
+                            key={p.name}
+                            onClick={() => { setPrompt(p.prompt); setPresetsOpen(false); }}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-secondary transition-colors"
+                          >
+                            {p.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
                 <textarea
                   placeholder="Ask something..."
                   value={prompt}

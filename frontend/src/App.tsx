@@ -3,7 +3,6 @@ import HoneycombBg from "@/components/HoneycombBg";
 import Home from "@/pages/Home";
 import Sessions from "@/pages/Sessions";
 import NewSessionView from "@/pages/NewSessionView";
-import TestChats from "@/pages/TestChats";
 import Buy from "@/pages/Buy";
 
 export default function App() {
@@ -14,7 +13,6 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/sessions" element={<Sessions />} />
         <Route path="/sessions/:id" element={<NewSessionView />} />
-        <Route path="/test-chats" element={<TestChats />} />
         <Route path="/buy" element={<Buy />} />
       </Routes>
     </>
