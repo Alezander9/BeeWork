@@ -1,3 +1,5 @@
+![Bee Work Splash](frontend/src/assets/BeeWorkSplash.jpg)
+
 Project for Treehacks 2026
 
 BeeWork
