@@ -148,29 +148,51 @@ def run_tasks(state: dict, max_parallel: int) -> None:
         save_state(state)
         return
 
-    print(f"[tasks] Running {len(work)} task(s), max_parallel={max_parallel}")
+    # Group by file_path so concurrent PRs never touch the same file
+    from collections import defaultdict
+    file_groups = defaultdict(list)
+    for item in work:
+        file_groups[item[1]["file_path"]].append(item)
 
-    with ThreadPoolExecutor(max_workers=max_parallel) as pool:
-        futures = {}
-        for i, (slug, task, existing_pr) in enumerate(work):
-            stage["tasks"][slug]["status"] = "in_progress"
-            save_state(state)
-            key_index = i % NUM_GEMINI_KEYS
-            futures[pool.submit(_run_single_task, task, state["full_repo"], key_index, existing_pr)] = slug
+    # Build batches: each batch has at most one task per file_path
+    batches = []
+    while any(file_groups.values()):
+        batch = []
+        for fp in list(file_groups):
+            if file_groups[fp]:
+                batch.append(file_groups[fp].pop(0))
+            if not file_groups[fp]:
+                del file_groups[fp]
+        if batch:
+            batches.append(batch)
 
-        for future in as_completed(futures):
-            slug = futures[future]
-            try:
-                pr = future.result()
-                stage["tasks"][slug] = {"status": "completed", "pr": pr}
-                print(f"[tasks] Completed: {slug} (PR #{pr})")
-            except Exception as exc:
-                prev = stage["tasks"].get(slug, {})
-                stage["tasks"][slug] = {"status": "failed", "error": str(exc)}
-                if prev.get("pr"):
-                    stage["tasks"][slug]["pr"] = prev["pr"]
-                print(f"[tasks] Failed: {slug} -- {exc}")
-            save_state(state)
+    print(f"[tasks] Running {len(work)} task(s) in {len(batches)} batch(es), max_parallel={max_parallel}")
+
+    key_counter = 0
+    for batch_idx, batch in enumerate(batches):
+        print(f"[tasks] Starting batch {batch_idx + 1}/{len(batches)} ({len(batch)} task(s))")
+        with ThreadPoolExecutor(max_workers=max_parallel) as pool:
+            futures = {}
+            for slug, task, existing_pr in batch:
+                stage["tasks"][slug]["status"] = "in_progress"
+                save_state(state)
+                key_index = key_counter % NUM_GEMINI_KEYS
+                key_counter += 1
+                futures[pool.submit(_run_single_task, task, state["full_repo"], key_index, existing_pr)] = slug
+
+            for future in as_completed(futures):
+                slug = futures[future]
+                try:
+                    pr = future.result()
+                    stage["tasks"][slug] = {"status": "completed", "pr": pr}
+                    print(f"[tasks] Completed: {slug} (PR #{pr})")
+                except Exception as exc:
+                    prev = stage["tasks"].get(slug, {})
+                    stage["tasks"][slug] = {"status": "failed", "error": str(exc)}
+                    if prev.get("pr"):
+                        stage["tasks"][slug]["pr"] = prev["pr"]
+                    print(f"[tasks] Failed: {slug} -- {exc}")
+                save_state(state)
 
     all_ok = all(t.get("status") == "completed" for t in stage["tasks"].values())
     stage["status"] = "completed" if all_ok else "failed"
