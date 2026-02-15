@@ -1,0 +1,101 @@
+@import "@fontsource-variable/outfit";
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* ---------------------------------------------------------------
+   BeeWork theme -- single light bee-themed palette.
+   --------------------------------------------------------------- */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  /* shadcn semantic tokens -> tailwind classes */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* custom palette -> e.g. bg-highlight, text-bee-black, bg-honeycomb */
+  --color-highlight: var(--highlight);
+  --color-honeycomb: var(--honeycomb);
+  --color-honeycomb-light: var(--honeycomb-light);
+  --color-wing: var(--wing);
+  --color-bee-yellow: var(--bee-yellow);
+  --color-bee-black: var(--bee-black);
+}
+
+:root {
+  --radius: 0px;
+
+  /* page */
+  --background: #FFFFFF;
+  --foreground: #212121;
+
+  /* cards / popovers -- white, float above the honeycomb bg */
+  --card: #FFFFFF;
+  --card-foreground: #212121;
+  --popover: #FFFFFF;
+  --popover-foreground: #212121;
+
+  /* primary action -- warm highlight yellow with bee-black text */
+  --primary: #FFBD59;
+  --primary-foreground: #2E2A26;
+
+  /* secondary -- light honeycomb surface */
+  --secondary: #FFF5D9;
+  --secondary-foreground: #212121;
+
+  /* muted -- darker honeycomb for subdued areas */
+  --muted: #FCE2AD;
+  --muted-foreground: #7A7067;
+
+  /* accent -- blue pop */
+  --accent: #27B7D9;
+  --accent-foreground: #FFFFFF;
+
+  /* destructive */
+  --destructive: #DC2626;
+
+  /* borders & inputs -- warm, subtle */
+  --border: #F0D9A8;
+  --input: #F0D9A8;
+  --ring: #27B7D9;
+
+  /* --- custom palette --- */
+  --highlight: #FFBD59;
+  --honeycomb: #FCE2AD;
+  --honeycomb-light: #FFF5D9;
+  --wing: #CDDFDF;
+  --bee-yellow: #FBB80C;
+  --bee-black: #2E2A26;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    font-family: "Outfit Variable", sans-serif;
+    font-weight: 600;
+    @apply bg-background text-foreground;
+  }
+}
