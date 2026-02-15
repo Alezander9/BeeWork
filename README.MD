@@ -13,3 +13,8 @@ First whole bath is done at 7mins
 
 New test 
 uv run .\shared\full_pipeline.py --repo 4-45 --project .\shared\project_documents\small_test.md --max-parallel 15
+
+
+cloudflared tunnel run beework
+Start fast api server for web control
+uv run uvicorn server.main:app --host 0.0.0.0 --port 8000

@@ -6,31 +6,30 @@ export default function SessionView() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-background/90">
-      <header className="border-b border-border px-6 py-4 flex items-center justify-between bg-background">
-        <div className="flex items-center gap-4">
-          <h1
-            className="text-lg font-bold tracking-tight cursor-pointer"
-            onClick={() => navigate("/")}
-          >
-            BeeWork
-          </h1>
-          <span className="text-muted-foreground">/</span>
+    <div className="min-h-screen bg-background/50 pb-16">
+      <main className="max-w-3xl mx-auto px-6 py-10">
+        <div className="flex items-center gap-2 mb-6 text-sm">
           <span
-            className="text-sm text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+            className="text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
             onClick={() => navigate("/sessions")}
           >
             Sessions
           </span>
           <span className="text-muted-foreground">/</span>
-          <span className="text-sm font-mono">{id}</span>
+          <span className="font-mono">{id}</span>
         </div>
-        <SettingsDialog />
-      </header>
-
-      <main className="max-w-3xl mx-auto px-6 py-10">
         <p className="text-muted-foreground">Session detail view -- coming soon.</p>
       </main>
+
+      <nav className="fixed bottom-0 left-0 right-0 border-t-3 border-bee-black bg-primary px-6 py-3 flex items-center justify-between">
+        <h1
+          className="text-lg font-bold tracking-tight text-primary-foreground cursor-pointer"
+          onClick={() => navigate("/")}
+        >
+          BeeWork
+        </h1>
+        <SettingsDialog />
+      </nav>
     </div>
   );
 }

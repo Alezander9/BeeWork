@@ -1,5 +1,9 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 import SettingsDialog from "@/components/SettingsDialog";
+import { getAdminToken } from "@/lib/auth";
+import { createSession } from "@/lib/api";
 
 const DUMMY_SESSIONS = [
   { id: "a1b2c3", repo: "california-rng", tasks: 4, status: "completed", date: "2026-02-14" },
@@ -15,23 +19,35 @@ const STATUS_STYLES: Record<string, string> = {
 
 export default function Sessions() {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+
+  async function handleNewSession() {
+    const token = getAdminToken();
+    if (!token) {
+      alert("Set your admin credentials first (bee icon, bottom-right).");
+      return;
+    }
+    setLoading(true);
+    try {
+      await createSession(token);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Request failed");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
-    <div className="min-h-screen bg-background/90">
-      <header className="border-b border-border px-6 py-4 flex items-center justify-between bg-background">
-        <h1
-          className="text-lg font-bold tracking-tight cursor-pointer"
-          onClick={() => navigate("/")}
-        >
-          BeeWork
-        </h1>
-        <SettingsDialog />
-      </header>
-
+    <div className="min-h-screen bg-background/50 pb-16">
       <main className="max-w-3xl mx-auto px-6 py-10">
-        <h2 className="text-2xl font-bold mb-6">Sessions</h2>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold">Sessions</h2>
+          <Button onClick={handleNewSession} disabled={loading}>
+            {loading ? "Creating..." : "New Session"}
+          </Button>
+        </div>
 
-        <div className="border border-border">
+        <div className="border border-border bg-background">
           <div className="grid grid-cols-[1fr_80px_120px_100px] gap-4 px-4 py-2 text-sm font-medium text-muted-foreground border-b border-border">
             <span>Repository</span>
             <span>Tasks</span>
@@ -57,6 +73,16 @@ export default function Sessions() {
           ))}
         </div>
       </main>
+
+      <nav className="fixed bottom-0 left-0 right-0 border-t-3 border-bee-black bg-primary px-6 py-3 flex items-center justify-between">
+        <h1
+          className="text-lg font-bold tracking-tight text-primary-foreground cursor-pointer"
+          onClick={() => navigate("/")}
+        >
+          BeeWork
+        </h1>
+        <SettingsDialog />
+      </nav>
     </div>
   );
 }

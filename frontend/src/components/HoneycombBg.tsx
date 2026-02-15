@@ -1,4 +1,4 @@
-const S = 28; // hex side length -- tweak for cell size
+const S = 18; // hex side length -- tweak for cell size
 const H = S * Math.sqrt(3); // hex height
 const PW = S * 3; // pattern tile width
 const PH = H; // pattern tile height
@@ -45,7 +45,7 @@ export default function HoneycombBg() {
             <feColorMatrix
               type="matrix"
               in="noise"
-              values="0.012 0 0 0 0.988
+              values="0.112 0 0 0 0.988
                       0 0.073 0 0 0.886
                       0 0 0.173 0 0.678
                       0 0 0 0 1"
