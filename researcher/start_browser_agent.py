@@ -60,14 +60,16 @@ def poll_task(task_id, label="agent"):
     while True:
         elapsed = time.time() - start
         if elapsed > TIMEOUT:
-            print(f"[{tag}poll] timed out after {int(elapsed)}s")
+            msg = f"[{tag}poll] timed out after {int(elapsed)}s"
+            print(msg); telemetry.log(msg)
             return {"status": "timeout", "output": "Browser agent timed out", "steps": []}
         resp = requests.get(f"{BASE_URL}/tasks/{task_id}", headers=headers())
         resp.raise_for_status()
         task = resp.json()
         status = task.get("status")
         steps = task.get("steps", [])
-        print(f"[{tag}poll] status={status} steps={len(steps)} elapsed={int(elapsed)}s")
+        msg = f"[{tag}poll] status={status} steps={len(steps)} elapsed={int(elapsed)}s"
+        print(msg); telemetry.log(msg)
         if status in ("finished", "stopped"):
             return task
         time.sleep(POLL_INTERVAL)
@@ -80,18 +82,22 @@ def run_browser_agent(task, website=None, label="agent"):
     session = create_session()
     session_id = session["id"]
     live_url = session.get("liveUrl")
-    print(f"[{tag}session] {session_id}")
+    msg = f"[{tag}session] {session_id}"
+    print(msg); telemetry.log(msg)
     if live_url:
-        print(f"[{tag}live] {live_url}")
+        msg = f"[{tag}live] {live_url}"
+        print(msg); telemetry.log(msg)
         telemetry.event("browser_url", {"url": live_url, "agent": tag})
 
     # Start the task in the session
     task_resp = create_task(session_id, task, website)
     task_id = task_resp["id"]
-    print(f"[{tag}task] {task_id}")
+    msg = f"[{tag}task] {task_id}"
+    print(msg); telemetry.log(msg)
 
     # Poll until done
     result = poll_task(task_id, label=label)
+    telemetry.event("browser_done", {"agent": tag, "status": result.get("status", "unknown")})
 
     # Strip fields the OpenCode agent doesn't need
     for key in ("id", "sessionId", "llm"):
@@ -102,10 +108,12 @@ def run_browser_agent(task, website=None, label="agent"):
 
     output = result.get("output")
     if output:
-        print(f"[{tag}output] {output}")
+        msg = f"[{tag}output] {output[:300]}"
+        print(msg); telemetry.log(msg)
     verdict = result.get("judgeVerdict")
     if verdict is not None:
-        print(f"[{tag}judge] {verdict}")
+        msg = f"[{tag}judge] {verdict}"
+        print(msg); telemetry.log(msg)
 
     return result
 

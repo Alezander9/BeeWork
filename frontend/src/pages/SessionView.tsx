@@ -22,7 +22,8 @@ function useLogTicker() {
         return;
       }
       setLine(next);
-      setTimeout(tick, 80);
+      console.log(next);
+      setTimeout(tick, 200);
     })();
   }
 
@@ -36,13 +37,27 @@ function useLogTicker() {
 
 // --- Derive dashboard stats from events ---
 
+interface PRInfo {
+  pr: number;
+  agent_id: string;
+  repo?: string;
+  status: "pending" | "reviewing" | "merged" | "closed" | "open" | "unknown";
+}
+
+interface BrowserInfo {
+  url: string;
+  agent: string;
+  active: boolean;
+}
+
 interface DashboardStats {
   activeResearchers: number;
   activeReviewers: number;
   totalResearchers: number;
   totalReviewers: number;
-  prs: { pr: number; agent_id: string; repo?: string }[];
-  browserUrls: { url: string; agent: string }[];
+  prs: PRInfo[];
+  browsers: BrowserInfo[];
+  orchestratorStatus: "waiting" | "running" | "done";
   pipelineStatus: string;
   elapsedSeconds: number | null;
   taskCount: number | null;
@@ -56,7 +71,8 @@ function useStats(events: { type: string; data: Record<string, unknown> }[] | un
       totalResearchers: 0,
       totalReviewers: 0,
       prs: [],
-      browserUrls: [],
+      browsers: [],
+      orchestratorStatus: "waiting",
       pipelineStatus: "waiting",
       elapsedSeconds: null,
       taskCount: null,
@@ -67,15 +83,19 @@ function useStats(events: { type: string; data: Record<string, unknown> }[] | un
     let researchDone = 0;
     let reviewStarted = 0;
     let reviewDone = 0;
+    const prMap = new Map<number, PRInfo>();
+    const browserMap = new Map<string, BrowserInfo>();
 
     for (const e of events) {
       const d = e.data as Record<string, unknown>;
       switch (e.type) {
         case "pipeline_started":
           stats.pipelineStatus = "running";
+          stats.orchestratorStatus = "running";
           break;
         case "orchestrator_done":
           stats.taskCount = (d.taskCount as number) ?? null;
+          stats.orchestratorStatus = "done";
           break;
         case "researcher_started":
           researchStarted++;
@@ -85,23 +105,46 @@ function useStats(events: { type: string; data: Record<string, unknown> }[] | un
           break;
         case "reviewer_started":
           reviewStarted++;
+          {
+            const prNum = d.pr as number;
+            const existing = prMap.get(prNum);
+            if (existing) existing.status = "reviewing";
+          }
           break;
         case "reviewer_done":
           reviewDone++;
           break;
         case "pr_created":
-          stats.prs.push({
+          prMap.set(d.pr as number, {
             pr: d.pr as number,
             agent_id: d.agent_id as string,
             repo: d.repo as string | undefined,
+            status: "pending",
           });
           break;
+        case "pr_reviewed": {
+          const prNum = d.pr as number;
+          const state = d.state as string;
+          const existing = prMap.get(prNum);
+          if (existing) {
+            existing.status = (state === "merged" || state === "closed" || state === "open")
+              ? state : "unknown";
+          }
+          break;
+        }
         case "browser_url":
-          stats.browserUrls.push({
+          browserMap.set(d.agent as string, {
             url: d.url as string,
             agent: d.agent as string,
+            active: true,
           });
           break;
+        case "browser_done": {
+          const agent = d.agent as string;
+          const existing = browserMap.get(agent);
+          if (existing) existing.active = false;
+          break;
+        }
         case "pipeline_done":
           stats.pipelineStatus = "completed";
           stats.elapsedSeconds = (d.elapsedSeconds as number) ?? null;
@@ -109,6 +152,8 @@ function useStats(events: { type: string; data: Record<string, unknown> }[] | un
       }
     }
 
+    stats.prs = Array.from(prMap.values());
+    stats.browsers = Array.from(browserMap.values());
     stats.totalResearchers = researchStarted;
     stats.totalReviewers = reviewStarted;
     stats.activeResearchers = researchStarted - researchDone;
@@ -142,10 +187,28 @@ export default function SessionView() {
   }, [logs, push]);
 
   return (
-    <div className="min-h-screen bg-background/50 pb-32">
-      <main className="w-full px-6 py-10">
+    <div className="min-h-screen bg-background/50 pb-16">
+      <main className="w-full px-6 py-4">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 text-sm mb-6">
+          <span
+            className="text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+            onClick={() => navigate("/sessions")}
+          >
+            Sessions
+          </span>
+          <span className="text-muted-foreground">/</span>
+          <span className="font-mono text-xs">{id}</span>
+        </div>
+
         {/* Stats grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 max-w-3xl">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
+          <div className="border border-border bg-background px-4 py-3">
+            <p className="text-xs text-muted-foreground">Orchestrator</p>
+            <p className="text-lg font-bold">
+              <StatusLabel status={stats.orchestratorStatus} />
+            </p>
+          </div>
           <StatCard label="Researchers" active={stats.activeResearchers} total={stats.totalResearchers} />
           <StatCard label="Reviewers" active={stats.activeReviewers} total={stats.totalReviewers} />
           <div className="border border-border bg-background px-4 py-3">
@@ -153,20 +216,23 @@ export default function SessionView() {
             <p className="text-lg font-bold">{stats.taskCount ?? "--"}</p>
           </div>
           <div className="border border-border bg-background px-4 py-3">
-            <p className="text-xs text-muted-foreground">Status</p>
-            <p className="text-lg font-bold">{stats.pipelineStatus}</p>
+            <p className="text-xs text-muted-foreground">Pipeline</p>
+            <p className="text-lg font-bold">
+              <StatusLabel status={stats.pipelineStatus} />
+            </p>
           </div>
         </div>
 
         {/* PRs */}
         {stats.prs.length > 0 && (
-          <div className="mb-6 max-w-3xl">
+          <div className="mb-6">
             <h3 className="text-sm font-medium text-muted-foreground mb-2">Pull Requests</h3>
             <div className="border border-border bg-background divide-y divide-border">
               {stats.prs.map((pr) => (
-                <div key={pr.pr} className="px-4 py-2 text-sm flex items-center justify-between">
+                <div key={pr.pr} className="px-4 py-2 text-sm flex items-center gap-4">
                   <span className="font-mono">PR #{pr.pr}</span>
-                  <span className="text-muted-foreground text-xs">{pr.agent_id}</span>
+                  <PRStatusBadge status={pr.status} />
+                  <span className="text-muted-foreground text-xs flex-1 truncate">{pr.agent_id}</span>
                   {pr.repo && (
                     <a
                       href={`https://github.com/${pr.repo}/pull/${pr.pr}`}
@@ -183,19 +249,20 @@ export default function SessionView() {
           </div>
         )}
 
-        {/* Browser URLs */}
-        {stats.browserUrls.length > 0 && (
-          <div className="mb-6 max-w-3xl">
+        {/* Browser Sessions */}
+        {stats.browsers.length > 0 && (
+          <div className="mb-6">
             <h3 className="text-sm font-medium text-muted-foreground mb-2">Browser Sessions</h3>
             <div className="border border-border bg-background divide-y divide-border">
-              {stats.browserUrls.map((b, i) => (
-                <div key={i} className="px-4 py-2 text-sm flex items-center justify-between">
+              {stats.browsers.map((b, i) => (
+                <div key={i} className="px-4 py-2 text-sm flex items-center gap-4">
+                  <span className={`inline-block w-2 h-2 rounded-full ${b.active ? "bg-bee-yellow" : "bg-muted-foreground/40"}`} />
                   <span className="text-muted-foreground text-xs">{b.agent}</span>
                   <a
                     href={b.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-accent hover:underline text-xs font-mono truncate max-w-[300px]"
+                    className="text-accent hover:underline text-xs font-mono truncate max-w-[400px]"
                   >
                     {b.url}
                   </a>
@@ -212,20 +279,6 @@ export default function SessionView() {
           </p>
         )}
       </main>
-
-      {/* Breadcrumb - positioned above bottom bar */}
-      <div className="fixed bottom-16 left-0 right-0 px-6 py-3 bg-background/50">
-        <div className="flex items-center gap-2 text-sm">
-          <span
-            className="text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
-            onClick={() => navigate("/sessions")}
-          >
-            Sessions
-          </span>
-          <span className="text-muted-foreground">/</span>
-          <span className="font-mono text-xs">{id}</span>
-        </div>
-      </div>
 
       {/* Bottom bar with log ticker */}
       <nav className="fixed bottom-0 left-0 right-0 border-t-3 border-bee-black bg-primary px-6 py-3 flex items-center justify-between">
@@ -255,5 +308,33 @@ function StatCard({ label, active, total }: { label: string; active: number; tot
         <span className="text-muted-foreground text-sm font-normal"> / {total}</span>
       </p>
     </div>
+  );
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  waiting: "text-muted-foreground",
+  running: "text-bee-yellow",
+  done: "text-green-700",
+  completed: "text-green-700",
+};
+
+function StatusLabel({ status }: { status: string }) {
+  return <span className={STATUS_COLORS[status] ?? ""}>{status}</span>;
+}
+
+const PR_BADGE: Record<string, string> = {
+  pending: "bg-secondary text-muted-foreground",
+  reviewing: "bg-secondary text-bee-yellow",
+  merged: "bg-green-100 text-green-700",
+  closed: "bg-red-50 text-destructive",
+  open: "bg-secondary text-foreground",
+  unknown: "bg-muted text-muted-foreground",
+};
+
+function PRStatusBadge({ status }: { status: string }) {
+  return (
+    <span className={`px-2 py-0.5 text-xs font-medium ${PR_BADGE[status] ?? PR_BADGE.unknown}`}>
+      {status}
+    </span>
   );
 }

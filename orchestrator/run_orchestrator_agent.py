@@ -6,9 +6,11 @@ import argparse
 import json
 import os
 import shlex
+import time
 from dotenv import load_dotenv
 import modal
 from lmnr import Laminar
+from shared import telemetry
 from shared.tracing import observe_agent_events
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -97,7 +99,8 @@ def _extract_token_usage(sb):
         out = _parse_token_value(output_match.group(1))
 
     if inp == 0 and out == 0:
-        print(f"Warning: could not extract token counts from opencode stats")
+        msg = "[orchestrator] Warning: could not extract token counts from opencode stats"
+        print(msg); telemetry.log(msg)
         return {"input_tokens": None, "output_tokens": None}
 
     return {"input_tokens": inp, "output_tokens": out}
@@ -126,13 +129,17 @@ def run(repo_name, project_path, key_index=0):
         "PARALLEL_API_KEY": os.environ["PARALLEL_API_KEY"],
     })
 
-    print(f"[{tag}] Creating sandbox...")
+    msg = f"[{tag}] Creating sandbox..."
+    print(msg); telemetry.log(msg)
+    t0 = time.time()
     with modal.enable_output():
         sb = modal.Sandbox.create(
             "sleep", "infinity",
             image=image, secrets=[secret], app=app,
             workdir="/root/code", timeout=30 * MINUTES,
         )
+    msg = f"[{tag}] Sandbox ready ({time.time() - t0:.1f}s)"
+    print(msg); telemetry.log(msg)
 
     # Check if the repo already exists, create if not, then clone
     safe_repo_name = shlex.quote(repo_name)
@@ -141,12 +148,14 @@ def run(repo_name, project_path, key_index=0):
     check_rc = run_cmd(sb.exec("bash", "-c", f"gh repo view {safe_repo_name} --json name"), show=False)
 
     if check_rc == 0:
-        print(f"[{tag}] Repo '{repo_name}' already exists, cloning...")
+        msg = f"[{tag}] Repo '{repo_name}' already exists, cloning..."
+        print(msg); telemetry.log(msg)
         rc = run_cmd(sb.exec("bash", "-c",
             f"gh repo clone {safe_repo_name} {KB_DIR}"
         ), show=True)
     else:
-        print(f"[{tag}] Creating new GitHub repo '{repo_name}'...")
+        msg = f"[{tag}] Creating new GitHub repo '{repo_name}'..."
+        print(msg); telemetry.log(msg)
         create_cmd = (
             f"gh repo create {safe_repo_name} --public --clone "
             f"--description 'Created by BeeWork Agent'"
@@ -156,7 +165,8 @@ def run(repo_name, project_path, key_index=0):
         ), show=True)
 
     if rc != 0:
-        print(f"[{tag}] Failed to create/clone repo")
+        msg = f"[{tag}] Failed to create/clone repo"
+        print(msg); telemetry.log(msg)
         sb.terminate()
         return []
 
@@ -183,7 +193,8 @@ def run(repo_name, project_path, key_index=0):
 
     # Run the agent from /root/code (where opencode.json, AGENTS.MD, tools/ live)
     # pty=True is required -- OpenCode hangs without a pseudo-terminal
-    print(f"[{tag}] Running agent (model: {MODEL_ID})...")
+    msg = f"[{tag}] Running agent (model: {MODEL_ID})..."
+    print(msg); telemetry.log(msg)
     proc = sb.exec("bash", "-c",
         "opencode run --format json 'Follow the instructions in AGENTS.md'",
         pty=True)
@@ -193,7 +204,8 @@ def run(repo_name, project_path, key_index=0):
     token_info = _extract_token_usage(sb)
     input_tokens = token_info.get("input_tokens")
     output_tokens = token_info.get("output_tokens")
-    print(f"[{tag}] Token usage -- input: {input_tokens}, output: {output_tokens}")
+    msg = f"[{tag}] Token usage -- input: {input_tokens}, output: {output_tokens}"
+    print(msg); telemetry.log(msg)
 
     # Collect research tasks created by create_research_task.py
     TASKS_FILE = "/tmp/all_tasks.json"
@@ -205,20 +217,24 @@ def run(repo_name, project_path, key_index=0):
         f"\""))
     with sb.open(TASKS_FILE, "r") as f:
         research_tasks = json.loads(f.read())
-    print(f"[{tag}] Collected {len(research_tasks)} research task(s)")
+    msg = f"[{tag}] Collected {len(research_tasks)} research task(s)"
+    print(msg); telemetry.log(msg)
 
     # Save the agent's work back to the repo
-    print(f"[{tag}] Committing and pushing changes...")
+    msg = f"[{tag}] Committing and pushing changes..."
+    print(msg); telemetry.log(msg)
     push_rc = run_cmd(sb.exec("bash", "-c",
         f"cd {KB_DIR} && git add -A && "
         f"git diff --cached --quiet || "
         f"(git commit -m 'Agent run' && git push -u origin HEAD)"),
         show=True)
     if push_rc != 0:
-        print(f"[{tag}] Warning: failed to push changes")
+        msg = f"[{tag}] Warning: failed to push changes"
+        print(msg); telemetry.log(msg)
 
     sb.terminate()
-    print(f"[{tag}] exit code: {agent_rc}")
+    msg = f"[{tag}] exit code: {agent_rc}"
+    print(msg); telemetry.log(msg)
 
     return {"research_tasks": research_tasks, "input_tokens": input_tokens, "output_tokens": output_tokens}
 

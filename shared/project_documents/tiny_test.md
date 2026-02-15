@@ -7,7 +7,7 @@ Build a knowledge base for a venture capital team evaluating the **AI browser in
 The goal is to assess one target company's product, traction, competitive positioning, and funding status.
 
 
-For the company browser use, the research should cover:
+For the company "browser-use", the research should cover:
 
 - **What they do**: Core product, key features, target users
 - **Funding and team**: Known funding rounds, notable investors, team size and background

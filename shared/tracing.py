@@ -35,6 +35,27 @@ def parse_jsonl(proc):
         print(f"[unparsed] {buf[:200]}")
 
 
+def _tool_summary(tool_name: str, tool_input) -> str:
+    """Return a short detail string for a tool call, or empty string."""
+    if not isinstance(tool_input, dict):
+        return ""
+    if tool_name in ("write", "edit"):
+        path = tool_input.get("filePath") or tool_input.get("file_path") or tool_input.get("path", "")
+        content = tool_input.get("content") or tool_input.get("value") or ""
+        first_line = content.split("\n", 1)[0][:80] if content else ""
+        if path:
+            return f" {path}" + (f" -- {first_line}" if first_line else "")
+    if tool_name == "read":
+        path = tool_input.get("filePath") or tool_input.get("file_path") or tool_input.get("path", "")
+        if path:
+            return f" {path}"
+    if tool_name == "bash":
+        cmd = tool_input.get("command") or tool_input.get("cmd") or ""
+        if cmd:
+            return f" {cmd[:120]}"
+    return ""
+
+
 def observe_agent_events(proc, model_id, agent_name="agent_run", metadata=None, label="agent"):
     """Parse OpenCode JSONL stream and create Laminar spans for each event."""
     step_stack = []
@@ -83,11 +104,13 @@ def observe_agent_events(proc, model_id, agent_name="agent_run", metadata=None, 
                 elif etype == "tool_use":
                     state = part.get("state", {})
                     tool_name = part.get("tool", "unknown")
+                    tool_input = state.get("input", {})
                     with Laminar.start_as_current_span(
-                        name=tool_name, input=state.get("input", {}), span_type="TOOL",
+                        name=tool_name, input=tool_input, span_type="TOOL",
                     ):
                         Laminar.set_span_output(state.get("output", ""))
-                    msg = f"[{tag}tool] {tool_name}"
+                    detail = _tool_summary(tool_name, tool_input)
+                    msg = f"[{tag}tool] {tool_name}{detail}"
                     print(msg)
                     telemetry.log(msg)
 

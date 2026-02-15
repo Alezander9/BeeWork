@@ -30,7 +30,7 @@ class StartRequest(BaseModel):
     repo: str
     researchWorkers: int = 5
     reviewWorkers: int = 2
-    project: str = "shared/project_documents/california_rng_deep.md"
+    project: str = "shared/project_documents/tiny_test.md"
 
 
 @app.post("/start")

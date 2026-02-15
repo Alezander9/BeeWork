@@ -49,7 +49,7 @@ def _do_flush():
 
 def log(*lines: str):
     with _buf_lock:
-        _buf.extend(lines)
+        _buf.extend(l.replace("\n", "\\n") for l in lines)
 
 
 def event(event_type: str, data: dict | None = None):
