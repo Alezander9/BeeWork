@@ -22,7 +22,7 @@ Follow these steps:
 
 4. **Create research tasks**: For each file in the knowledge base, create research tasks using `tools/create_research_task.py`. 
 
-Create research tasks: For each file in the knowledge base, create 2–10 separate research tasks. Each task should target the same file but cover a different subtopic and use a different website as its source. Do NOT create only one task per file — a single source produces shallow, one-sided content. For example, for a company file like knowledgebase/companies/socalgas.md, you would spawn separate agents that target the same file but use different websites as their source, or try to find different information on the same website:
+Create research tasks: For each file in the knowledge base, create at least 2 separate research tasks. Each task should target the same file but cover a different subtopic and use a different website as its source. Do NOT create only one task per file — a single source produces shallow, one-sided content. For example, for a company file like knowledgebase/companies/socalgas.md, you would spawn separate agents that target the same file but use different websites as their source, or try to find different information on the same website:
 
 - Agent 1 (company's own site): --topic "SoCalGas overview" --websites "https://www.socalgas.com"
 - Agent 2 (regulator): --topic "SoCalGas regulatory filings" --websites "https://www.cpuc.ca.gov"

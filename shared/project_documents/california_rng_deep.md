@@ -2,7 +2,7 @@
 
 ## Objective
 
-Build an in depth knowledge base on the California renewable gas (RNG) industry. Cover all the major companies and their role in the industry, key regulations, market dynamics, and future trends. The purpose of this knowledgebase is to be used by hedge fund analysts to make investment decisions, therefore is it important to also include information about potential risks and opportunities in the industry. Additionally, it is important to include information about how the industry is evolving and what the future trends are. Some emphasis should also look at the carbon credit markets and how they are evolving.
+Build an extremely in depth knowledge base on the California renewable gas (RNG) industry. Cover all the major companies and their role in the industry, key regulations, market dynamics, and future trends. The purpose of this knowledgebase is to be used by hedge fund analysts to make investment decisions, therefore is it important to also include information about potential risks and opportunities in the industry. Additionally, it is important to include information about how the industry is evolving and what the future trends are. Heavy emphasis should also be placed on the carbon credit markets and how they are evolving. It is important that this is a comprehensive and in depth knowledge base, not a surface level overview, and care should be taken such that every possible angle is explored. Additionaly, adding specific data whenever possible is preferred. A typical file should have at least 4 different research tasks. Make sure to do a thorough web search to find relevant information to create research tasks for. 
 
 ## Knowledgebase Structure
 
@@ -16,6 +16,8 @@ knowledgebase/
   risks/
   opportunities/
 ```
+
+The knowledgebase should have a maximum depth of about 3 (excluding the root knowledgebase folder), though individual folders may have different depths. There should be about 50 files total in the knowledgebase.
 
 ## Research Requirements
 
