@@ -4,6 +4,7 @@ import Home from "@/pages/Home";
 import Sessions from "@/pages/Sessions";
 import NewSessionView from "@/pages/NewSessionView";
 import TestChats from "@/pages/TestChats";
+import Buy from "@/pages/Buy";
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
         <Route path="/sessions" element={<Sessions />} />
         <Route path="/sessions/:id" element={<NewSessionView />} />
         <Route path="/test-chats" element={<TestChats />} />
+        <Route path="/buy" element={<Buy />} />
       </Routes>
     </>
   );
