@@ -17,7 +17,9 @@ def search_web(objective: str) -> str:
         },
         json={
             "objective": objective,
-            "mode": "agentic"
+            "mode": "agentic",
+            "max_results": 15, # here is where we change number of results
+            "excerpts": {"max_chars_per_result": 1500}, # here is where we change chars per results
         },
     )
     response.raise_for_status()
