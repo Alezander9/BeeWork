@@ -8,7 +8,6 @@ Build an in depth knowledge base on the California renewable gas (RNG) industry.
 
 ```
 knowledgebase/
-  README.md
   companies/
     <company-name>.md
   industry_overview/

@@ -20,7 +20,10 @@ For all substantive claims, you must include a citation to the URL it came from.
 
 Your goal is to contribute correct, verified, clear and low verbosity information to the knowledgebase.
 Your task and **target file** have been given to you in the prompt. Your PR should only contain changes to the target file.
-You are working on a knowledge base repo full of information that is verified and cited.
+You are working on a knowledge base repo full of information that is verified and cited. 
+You should be **extremely* careful to only introduce verified information, and be as precise as possible. If there is any substantial information that is important but not citable, use citation [-1], and give a brief description of why it is not verifiable. However only do this if the information is particularly important and cannot be verified. Make sure to also address information that is important but unknown or uncertain.
+Make sure to thoroughly research the prompt and provide a comprehensive answer.
+
 
 ### Step 1: Background reading
 Read the **target file** (given in the prompt) in `knowledgebase/` and any important files it references (3-4 files max). Understand what information already exists and what is missing.
