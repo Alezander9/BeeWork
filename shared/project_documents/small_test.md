@@ -35,7 +35,7 @@ For the **overview file**, cover:
 
 This is a small-scope test run. Keep it focused:
 
-- **5 companies only** -- find the top 5 most relevant players in this space
-- **~10 research tasks total** -- roughly 2 per company (e.g. one from the company's own site, one from a news/analysis source) plus 1-2 for the overview
+- **3 companies only** -- find the top 3 most relevant players in this space
+- **max 10 research tasks total** -- roughly 2-3 per company (e.g. one from the company's own site, one from a news/analysis source) plus 1-2 for the overview
 - Each research task should target a **single file** and a **single source website**
 - Keep prompts short and specific -- one clear question per task

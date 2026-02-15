@@ -18,7 +18,9 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 MINUTES = 60
 AGENT_DIR = Path(__file__).parent
 KB_DIR = "/root/code/knowledgebase"
-BROWSER_RESULT_PATH = "/root/code/browser_agent_output/result.json"
+BROWSER_RESULT_DIR = "/root/code/browser_agent_output"
+BROWSER_RESULT_PATH = f"{BROWSER_RESULT_DIR}/result.json"
+BROWSER_OUTPUT_PATH = f"{BROWSER_RESULT_DIR}/research.md"
 
 # Read model from opencode.json so we can tag LLM spans
 OPENCODE_CONFIG = json.loads((AGENT_DIR / "opencode.json").read_text())
@@ -104,20 +106,29 @@ def run(topic, prompt, file_path, websites, repo, agent_id=None, key_index=0):
         sb.terminate()
         raise RuntimeError(f"Failed to clone repo {repo}")
 
+    # Configure git identity so commits work without agent intervention
+    run_cmd(sb.exec("bash", "-c",
+        f"cd {KB_DIR} && git config user.name 'BeeWork' && git config user.email 'beework.buzz@gmail.com'"))
+
     # --- Step 3: Write browser results into sandbox ---
-    # Use base64 to safely transfer JSON that may contain special characters
+    # Write full JSON for reference, plus a clean markdown file with just the output
+    run_cmd(sb.exec("bash", "-c", f"mkdir -p {BROWSER_RESULT_DIR}"))
     encoded = base64.b64encode(result_json.encode()).decode()
     run_cmd(sb.exec("bash", "-c",
-        f"mkdir -p /root/code/browser_agent_output && "
         f"echo '{encoded}' | base64 -d > {BROWSER_RESULT_PATH}"))
-    print(f"Browser results written to sandbox at {BROWSER_RESULT_PATH}")
+    output_text = browser_result.get("output", "")
+    encoded_output = base64.b64encode(output_text.encode()).decode()
+    run_cmd(sb.exec("bash", "-c",
+        f"echo '{encoded_output}' | base64 -d > {BROWSER_OUTPUT_PATH}"))
+    print(f"Browser results written to sandbox")
 
     # --- Step 4: Run OpenCode agent ---
     agent_prompt = (
         f"Topic: {topic}\n"
         f"Your task: {prompt}\n"
         f"Target file: {file_path}\n"
-        f"Browser research results are already available at browser_agent_output/result.json\n"
+        f"Browser research output is at browser_agent_output/research.md\n"
+        f"Full browser results (with steps/URLs) are at browser_agent_output/result.json if needed.\n"
         f"Follow the instructions in AGENTS.md."
     )
 
@@ -130,9 +141,24 @@ def run(topic, prompt, file_path, websites, repo, agent_id=None, key_index=0):
     trace_meta = {"research_agent_id": agent_id, "topic": topic} if agent_id else {}
     rc = observe_agent_events(proc, MODEL_ID, "researcher", metadata=trace_meta)
 
-    # Capture the PR number created by the agent
+    # --- Step 5: Create branch, commit, push, and open PR ---
+    branch = f"research/{agent_id or 'unknown'}"
+    pr_title = f"Research: {topic}"
+    pr_body = f"Research on {topic} with citations"
+    git_cmd = (
+        f"cd {KB_DIR} && "
+        f"git checkout -b {shlex.quote(branch)} && "
+        f"git add -A && "
+        f"git diff --cached --quiet || "
+        f"(git commit -m {shlex.quote(topic)} && "
+        f"git push -u origin HEAD && "
+        f"gh pr create --title {shlex.quote(pr_title)} "
+        f"--body {shlex.quote(pr_body)})"
+    )
+    run_cmd(sb.exec("bash", "-c", git_cmd), show=True)
+
     pr_proc = sb.exec("bash", "-c",
-        f"cd {KB_DIR} && gh pr list --head $(git branch --show-current) --json number --jq '.[0].number'")
+        f"cd {KB_DIR} && gh pr list --head {shlex.quote(branch)} --json number --jq '.[0].number'")
     pr_raw = "".join(pr_proc.stdout).strip()
     pr_proc.wait()
     pr_number = int(pr_raw) if pr_raw.isdigit() else None

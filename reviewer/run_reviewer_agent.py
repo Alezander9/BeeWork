@@ -87,6 +87,10 @@ def run(repo, pr, agent_id=None, key_index=0):
         sb.terminate()
         raise RuntimeError(f"Failed to clone repo {repo}")
 
+    # Configure git identity so commits work without agent intervention
+    run_cmd(sb.exec("bash", "-c",
+        f"cd {KB_DIR} && git config user.name 'BeeWork' && git config user.email 'beework.buzz@gmail.com'"))
+
     prompt = f"Review PR #{pr} on repo {repo}. Follow the instructions in AGENTS.md."
     print(f"Running agent (model: {MODEL_ID}), reviewing PR #{pr}...")
     proc = sb.exec("bash", "-c",

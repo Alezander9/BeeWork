@@ -65,6 +65,7 @@ def track_stage(state: dict, name: str):
     stage = state["stages"].setdefault(name, {"status": "pending"})
     if stage["status"] == "completed":
         print(f"[{name}] Already completed, skipping.")
+        yield None
         return
     stage["status"] = "in_progress"
     save_state(state)
