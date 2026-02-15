@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAction } from "convex/react";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronDown, ChevronUp } from "lucide-react";
@@ -41,10 +41,20 @@ export default function ChatOverlay({ defaultRepo }: { defaultRepo?: string }) {
   const [open, setOpen] = useState(false);
   const [repo, setRepo] = useState(defaultRepo ?? "");
   const [model, setModel] = useState("google/gemini-3-flash");
+
+  // Update repo when defaultRepo resolves async
+  useEffect(() => {
+    if (defaultRepo && !repo) setRepo(defaultRepo);
+  }, [defaultRepo]);
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
-  const [withKB, setWithKB] = useState<{ response: string | null; error: string | null }>({ response: null, error: null });
-  const [withoutKB, setWithoutKB] = useState<{ response: string | null; error: string | null }>({ response: null, error: null });
+  type Result = { response: string | null; error: string | null };
+  const empty: Result = { response: null, error: null };
+  const [withKB, setWithKB] = useState<Result>(empty);
+  const [withSearch, setWithSearch] = useState<Result>(empty);
+  const [plain, setPlain] = useState<Result>(empty);
+
+  const pending = useRef(0);
 
   async function handleSend() {
     const secret = getAdminToken();
@@ -55,31 +65,25 @@ export default function ChatOverlay({ defaultRepo }: { defaultRepo?: string }) {
     if (!prompt.trim()) return;
 
     setLoading(true);
-    setWithKB({ response: null, error: null });
-    setWithoutKB({ response: null, error: null });
+    setWithKB(empty);
+    setWithSearch(empty);
+    setPlain(empty);
+    pending.current = 3;
 
     const base = { repo: repo.trim(), prompt: prompt.trim(), model: model.trim(), secret };
 
-    const [kbResult, plainResult] = await Promise.allSettled([
-      chat({ ...base, useKnowledgebase: true }),
-      chat({ ...base, useKnowledgebase: false }),
-    ]);
+    function done(setter: typeof setWithKB, r: string | Error) {
+      setter(r instanceof Error ? { response: null, error: r.message } : { response: r, error: null });
+      pending.current--;
+      if (pending.current === 0) setLoading(false);
+    }
 
-    setWithKB(
-      kbResult.status === "fulfilled"
-        ? { response: kbResult.value, error: null }
-        : { response: null, error: kbResult.reason instanceof Error ? kbResult.reason.message : "Request failed" },
-    );
-    setWithoutKB(
-      plainResult.status === "fulfilled"
-        ? { response: plainResult.value, error: null }
-        : { response: null, error: plainResult.reason instanceof Error ? plainResult.reason.message : "Request failed" },
-    );
-
-    setLoading(false);
+    chat({ ...base, mode: "kb" }).then((r) => done(setWithKB, r)).catch((e) => done(setWithKB, e instanceof Error ? e : new Error("Request failed")));
+    chat({ ...base, mode: "search" }).then((r) => done(setWithSearch, r)).catch((e) => done(setWithSearch, e instanceof Error ? e : new Error("Request failed")));
+    chat({ ...base, mode: "plain" }).then((r) => done(setPlain, r)).catch((e) => done(setPlain, e instanceof Error ? e : new Error("Request failed")));
   }
 
-  const hasResults = loading || withKB.response || withKB.error || withoutKB.response || withoutKB.error;
+  const hasResults = loading || withKB.response || withKB.error || withSearch.response || withSearch.error || plain.response || plain.error;
 
   return (
     <>
@@ -134,7 +138,7 @@ export default function ChatOverlay({ defaultRepo }: { defaultRepo?: string }) {
                   />
                 </div>
                 <Button onClick={handleSend} disabled={loading || !prompt.trim()} className="shrink-0">
-                  {loading ? "Thinking..." : "Send to both"}
+                  {loading ? "Thinking..." : "Send to all"}
                 </Button>
               </div>
 
@@ -156,7 +160,7 @@ export default function ChatOverlay({ defaultRepo }: { defaultRepo?: string }) {
 
               {/* Side-by-side responses */}
               {hasResults && (
-                <div className="grid grid-cols-2 gap-4 flex-1 min-h-0">
+                <div className="grid grid-cols-3 gap-4 flex-1 min-h-0">
                   <ResponsePanel
                     title="With Knowledgebase"
                     loading={loading}
@@ -164,10 +168,16 @@ export default function ChatOverlay({ defaultRepo }: { defaultRepo?: string }) {
                     error={withKB.error}
                   />
                   <ResponsePanel
+                    title="With Search"
+                    loading={loading}
+                    response={withSearch.response}
+                    error={withSearch.error}
+                  />
+                  <ResponsePanel
                     title="Without Knowledgebase"
                     loading={loading}
-                    response={withoutKB.response}
-                    error={withoutKB.error}
+                    response={plain.response}
+                    error={plain.error}
                   />
                 </div>
               )}

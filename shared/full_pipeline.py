@@ -237,9 +237,9 @@ def run_tasks(research_tasks, full_repo, num_research, num_review):
     print(msg); telemetry.log(msg)
 
 
-def run_pipeline(repo_name, project_path, num_research, num_review, session_id=None):
+def run_pipeline(repo_name, project_path, num_research, num_review, session_id=None, convex_site_url=None):
     if session_id:
-        telemetry.init(session_id)
+        telemetry.init(session_id, convex_site_url)
         telemetry.status("running")
 
     missing = [v for v in REQUIRED_ENV_VARS if not os.environ.get(v)]
@@ -285,8 +285,9 @@ def main():
     parser.add_argument("--research-workers", type=int, default=5)
     parser.add_argument("--review-workers", type=int, default=2)
     parser.add_argument("--session-id", default=None)
+    parser.add_argument("--convex-site-url", default=None)
     args = parser.parse_args()
-    run_pipeline(args.repo, args.project, args.research_workers, args.review_workers, args.session_id)
+    run_pipeline(args.repo, args.project, args.research_workers, args.review_workers, args.session_id, args.convex_site_url)
 
 
 if __name__ == "__main__":

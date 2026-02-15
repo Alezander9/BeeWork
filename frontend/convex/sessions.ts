@@ -96,6 +96,7 @@ export const startSession = action({
         researchWorkers: args.researchWorkers,
         reviewWorkers: args.reviewWorkers,
         project: args.project,
+        convexSiteUrl: process.env.CONVEX_SITE_URL,
       }),
     });
     if (!resp.ok) {

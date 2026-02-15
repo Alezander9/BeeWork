@@ -25,14 +25,15 @@ _flush_thread: threading.Thread | None = None
 _stop = threading.Event()
 
 
-def init(session_id: str):
+def init(session_id: str, site_url: str | None = None):
     global _session_id, _site_url, _secret, _flush_thread
     _session_id = session_id
-    _site_url = os.environ.get("CONVEX_SITE_URL")
+    _site_url = site_url or os.environ.get("CONVEX_SITE_URL")
     _secret = os.environ.get("BEEWORK_SECRET_KEY")
     if not _site_url or not _secret:
         print("[telemetry] CONVEX_SITE_URL or BEEWORK_SECRET_KEY not set -- telemetry disabled")
         return
+    print(f"[telemetry] targeting {_site_url}")
     _stop.clear()
     _flush_thread = threading.Thread(target=_flush_loop, daemon=True)
     _flush_thread.start()

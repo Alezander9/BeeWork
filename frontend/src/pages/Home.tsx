@@ -105,7 +105,7 @@ export default function Home() {
         <div className="absolute bottom-6 left-6 flex gap-4 text-sm text-bee-black/40">
           <a href="https://devpost.com/software/beework" target="_blank" rel="noopener noreferrer" className="hover:text-bee-black/70 transition-colors">Devpost</a>
           <a href="https://github.com/Alezander9/BeeWork" target="_blank" rel="noopener noreferrer" className="hover:text-bee-black/70 transition-colors">Github</a>
-          <a href="#" target="_blank" rel="noopener noreferrer" className="hover:text-bee-black/70 transition-colors">Pitch Deck</a>
+          <a href="https://docs.google.com/presentation/d/1KGqUSn83BWOUU2tRIQxokh2dywbUY973HnNFKA0ZciM/edit?usp=sharing" target="_blank" rel="noopener noreferrer" className="hover:text-bee-black/70 transition-colors">Pitch Deck</a>
           <a href="/buy" className="hover:text-bee-black/70 transition-colors">Buy Now</a>
         </div>
       </div>

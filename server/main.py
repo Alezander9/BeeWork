@@ -31,6 +31,7 @@ class StartRequest(BaseModel):
     researchWorkers: int = 5
     reviewWorkers: int = 2
     project: str = "shared/project_documents/tiny_test.md"
+    convexSiteUrl: str = ""
 
 
 @app.post("/start")
@@ -46,6 +47,8 @@ async def start_pipeline(body: StartRequest, x_api_key: str = Header()):
         "--review-workers", str(body.reviewWorkers),
         "--session-id", body.sessionId,
     ]
+    if body.convexSiteUrl:
+        cmd += ["--convex-site-url", body.convexSiteUrl]
     subprocess.Popen(cmd, cwd=str(PROJECT_ROOT))
     print(f"[server] launched pipeline for session {body.sessionId}")
 

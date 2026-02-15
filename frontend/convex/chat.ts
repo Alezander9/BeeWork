@@ -64,7 +64,10 @@ async function fetchAndFlatten(repo: string, pat?: string): Promise<string> {
 
   // get default branch
   const repoResp = await fetch(`https://api.github.com/repos/${repo}`, { headers });
-  if (!repoResp.ok) throw new Error(`GitHub repo fetch failed (${repoResp.status})`);
+  if (!repoResp.ok) {
+    const body = await repoResp.text();
+    throw new Error(`GitHub repo fetch failed (${repoResp.status}) for "${repo}" [PAT ${pat ? "set" : "missing"}]: ${body}`);
+  }
   const { default_branch } = (await repoResp.json()) as { default_branch: string };
 
   // get recursive tree
@@ -101,13 +104,14 @@ async function fetchAndFlatten(repo: string, pat?: string): Promise<string> {
 }
 
 // --- main chat action ---
+// mode: "plain" | "kb" | "search"
 
 export const chat = action({
   args: {
     repo: v.string(),
     prompt: v.string(),
     model: v.string(),
-    useKnowledgebase: v.boolean(),
+    mode: v.string(),
     secret: v.string(),
   },
   returns: v.string(),
@@ -118,8 +122,7 @@ export const chat = action({
 
     let systemPrompt = "You are a helpful assistant. Answer clearly and concisely.";
 
-    if (args.useKnowledgebase) {
-      // check cache
+    if (args.mode === "kb") {
       const cached = await ctx.runQuery(internal.chat._getRepoCache, { repo: args.repo });
       let flatText: string;
 
@@ -142,8 +145,25 @@ export const chat = action({
         `<knowledgebase>\n${flatText}\n</knowledgebase>`;
     }
 
+    // Search mode uses Perplexity which has built-in web search
+    if (args.mode === "search") {
+      systemPrompt =
+        "You are a helpful assistant with web search access. " +
+        "Answer clearly and concisely. Cite your sources with URLs when using search results.";
+    }
+
     const apiKey = process.env.AI_GATEWAY_API_KEY;
     if (!apiKey) throw new Error("AI_GATEWAY_API_KEY not set");
+
+    const model = args.mode === "search" ? "perplexity/sonar" : args.model;
+
+    const body = {
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: `<user_query>\n${args.prompt}\n</user_query>` },
+      ],
+    };
 
     const resp = await fetch("https://ai-gateway.vercel.sh/v1/chat/completions", {
       method: "POST",
@@ -151,18 +171,12 @@ export const chat = action({
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        model: args.model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `<user_query>\n${args.prompt}\n</user_query>` },
-        ],
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!resp.ok) {
-      const body = await resp.text();
-      throw new Error(`AI Gateway error (${resp.status}): ${body}`);
+      const text = await resp.text();
+      throw new Error(`AI Gateway error (${resp.status}): ${text}`);
     }
 
     const data = (await resp.json()) as {
