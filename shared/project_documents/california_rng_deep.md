@@ -37,5 +37,3 @@ It is important that their is a mix of specific data / information and broad sum
 - Create an in depth file structure for the knowledgebase, and make sure to include all relevant information.
 - Be aggressive in the number of research tasks you create, and make sure to look at a wide range of sources.
 - Be sure to always look at multiple perspectives on a topic, and make sure to include information about potential risks and opportunities. 
-
-

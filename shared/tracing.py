@@ -33,10 +33,11 @@ def parse_jsonl(proc):
         print(f"[unparsed] {buf[:200]}")
 
 
-def observe_agent_events(proc, model_id, agent_name="agent_run", metadata=None):
+def observe_agent_events(proc, model_id, agent_name="agent_run", metadata=None, label="agent"):
     """Parse OpenCode JSONL stream and create Laminar spans for each event."""
     step_stack = []
     provider = model_id.split("/")[0] if "/" in model_id else "unknown"
+    tag = f"{label}:" if label else ""
 
     try:
         span_input = {"model": model_id}
@@ -73,7 +74,7 @@ def observe_agent_events(proc, model_id, agent_name="agent_run", metadata=None):
                             "gen_ai.usage.cost": cost,
                         })
                         span.end()
-                    print(f"[step] tokens={tokens} cost={cost}")
+                    print(f"[{tag}step] tokens={tokens} cost={cost}")
 
                 elif etype == "tool_use":
                     state = part.get("state", {})
@@ -82,7 +83,7 @@ def observe_agent_events(proc, model_id, agent_name="agent_run", metadata=None):
                         name=tool_name, input=state.get("input", {}), span_type="TOOL",
                     ):
                         Laminar.set_span_output(state.get("output", ""))
-                    print(f"[tool] {tool_name}")
+                    print(f"[{tag}tool] {tool_name}")
 
                 elif etype == "text":
                     text = part.get("text", "")
@@ -90,15 +91,15 @@ def observe_agent_events(proc, model_id, agent_name="agent_run", metadata=None):
                         name="text", input={"text": text}, span_type="TOOL",
                     ):
                         Laminar.set_span_output(text)
-                    print(f"[text] {text[:200]}")
+                    print(f"[{tag}text] {text[:200]}")
 
                 elif etype == "error":
-                    print(f"[error] {event.get('error', {})}")
+                    print(f"[{tag}error] {event.get('error', {})}")
 
             for span in step_stack:
                 span.end()
     except Exception as e:
-        print(f"[trace error] {e}")
+        print(f"[{tag}trace error] {e}")
 
     proc.wait()
     return proc.returncode
