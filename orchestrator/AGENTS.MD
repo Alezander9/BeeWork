@@ -16,7 +16,9 @@ Follow these steps:
 
 2. **Research**: Use `tools/search_web.py` to search for information relevant to the project. Perform multiple searches to get a comprehensive view of the space.
 
-3. **Create file structure**: Based on your research, create an organized file structure in `knowledgebase/` with markdown files. USe the file structure as described in `PROJECT.MD` as a rough blueprint, but don't be afraid to deviate from it if you find something interesting. Do not populate the files with detailed content -- just add a title and brief placeholder. Every folder should have a OVERVIEW.md file, which should be a summary of the folder's contents. Again, don't populate the OVERVIEW.md files with detailed content -- just add a title and brief placeholder.
+3. **Create file structure**: Based on your research, create an organized file structure in `knowledgebase/` with markdown files. Use the file structure as described in `PROJECT.MD` as a rough blueprint, but don't be afraid to deviate from it if you find something interesting. Do not populate the files with detailed content -- just add a title and brief placeholder. Every folder should have a OVERVIEW.md file, which should be a summary of the folder's contents. Again, don't populate the OVERVIEW.md files with detailed content -- just add a title and brief placeholder.
+
+   **Important**: Create files using the `write` tool directly with placeholder content. Do NOT use `touch`/`mkdir` then read files back -- just `mkdir -p` for directories and `write` each file in one step.
 
 4. **Create research tasks**: For each file in the knowledge base, create research tasks using `tools/create_research_task.py`. 
 
