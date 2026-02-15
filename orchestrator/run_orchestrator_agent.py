@@ -76,8 +76,6 @@ def _extract_token_usage(sb):
     for line in proc.stdout:
         output += line
     proc.wait()
-    print(f"[debug] opencode stats raw output:\n{output}")
-
     # Try JSON first (in case future versions support it)
     try:
         stats = json.loads(output.strip())
@@ -107,6 +105,7 @@ def _extract_token_usage(sb):
 
 def run(repo_name, project_path, key_index=0):
     """Run the orchestrator agent. Returns dict with research_tasks and total_tokens."""
+    tag = "orchestrator"
     project_content = Path(project_path).read_text()
 
     gemini_env = f"GEMINI_API_KEY_{key_index}"
@@ -127,7 +126,7 @@ def run(repo_name, project_path, key_index=0):
         "PARALLEL_API_KEY": os.environ["PARALLEL_API_KEY"],
     })
 
-    print(f"Creating sandbox...")
+    print(f"[{tag}] Creating sandbox...")
     with modal.enable_output():
         sb = modal.Sandbox.create(
             "sleep", "infinity",
@@ -142,12 +141,12 @@ def run(repo_name, project_path, key_index=0):
     check_rc = run_cmd(sb.exec("bash", "-c", f"gh repo view {safe_repo_name} --json name"), show=False)
 
     if check_rc == 0:
-        print(f"Repo '{repo_name}' already exists, cloning...")
+        print(f"[{tag}] Repo '{repo_name}' already exists, cloning...")
         rc = run_cmd(sb.exec("bash", "-c",
             f"gh repo clone {safe_repo_name} {KB_DIR}"
         ), show=True)
     else:
-        print(f"Creating new GitHub repo '{repo_name}'...")
+        print(f"[{tag}] Creating new GitHub repo '{repo_name}'...")
         create_cmd = (
             f"gh repo create {safe_repo_name} --public --clone "
             f"--description 'Created by BeeWork Agent'"
@@ -157,7 +156,7 @@ def run(repo_name, project_path, key_index=0):
         ), show=True)
 
     if rc != 0:
-        print("Failed to create/clone repo")
+        print(f"[{tag}] Failed to create/clone repo")
         sb.terminate()
         return []
 
@@ -184,17 +183,17 @@ def run(repo_name, project_path, key_index=0):
 
     # Run the agent from /root/code (where opencode.json, AGENTS.MD, tools/ live)
     # pty=True is required -- OpenCode hangs without a pseudo-terminal
-    print(f"Running agent (model: {MODEL_ID})...")
+    print(f"[{tag}] Running agent (model: {MODEL_ID})...")
     proc = sb.exec("bash", "-c",
         "opencode run --format json 'Follow the instructions in AGENTS.md'",
         pty=True)
-    agent_rc = observe_agent_events(proc, MODEL_ID, "orchestrator")
+    agent_rc = observe_agent_events(proc, MODEL_ID, "orchestrator", label=tag)
 
     # Extract token usage from OpenCode session DB
     token_info = _extract_token_usage(sb)
     input_tokens = token_info.get("input_tokens")
     output_tokens = token_info.get("output_tokens")
-    print(f"[orchestrator] Token usage -- input: {input_tokens}, output: {output_tokens}")
+    print(f"[{tag}] Token usage -- input: {input_tokens}, output: {output_tokens}")
 
     # Collect research tasks created by create_research_task.py
     TASKS_FILE = "/tmp/all_tasks.json"
@@ -206,20 +205,20 @@ def run(repo_name, project_path, key_index=0):
         f"\""))
     with sb.open(TASKS_FILE, "r") as f:
         research_tasks = json.loads(f.read())
-    print(f"Collected {len(research_tasks)} research task(s)")
+    print(f"[{tag}] Collected {len(research_tasks)} research task(s)")
 
     # Save the agent's work back to the repo
-    print("Committing and pushing changes...")
+    print(f"[{tag}] Committing and pushing changes...")
     push_rc = run_cmd(sb.exec("bash", "-c",
         f"cd {KB_DIR} && git add -A && "
         f"git diff --cached --quiet || "
         f"(git commit -m 'Agent run' && git push -u origin HEAD)"),
         show=True)
     if push_rc != 0:
-        print("Warning: failed to push changes")
+        print(f"[{tag}] Warning: failed to push changes")
 
     sb.terminate()
-    print(f"exit code: {agent_rc}")
+    print(f"[{tag}] exit code: {agent_rc}")
 
     return {"research_tasks": research_tasks, "input_tokens": input_tokens, "output_tokens": output_tokens}
 
