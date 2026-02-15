@@ -43,7 +43,21 @@ def setup_workspace(repo, use_kb=True):
 def parse_events(proc):
     buf = ""
     response_parts = []
-    for line in proc.stdout:
+    first_event = True
+    line_count = 0
+
+    while True:
+        line = proc.stdout.readline()
+        if not line:
+            stderr_output = proc.stderr.read()
+            if stderr_output:
+                print(f"\n[stderr]\n{stderr_output}", flush=True)
+            break
+
+        line_count += 1
+        if line_count == 1:
+            print(f"[got first line, length={len(line)}]", flush=True)
+
         line = line.replace("\r", "")
         for fragment in line.split("\n"):
             fragment = fragment.strip()
@@ -56,19 +70,23 @@ def parse_events(proc):
             except json.JSONDecodeError:
                 continue
 
+            if first_event:
+                print("[agent started]", flush=True)
+                first_event = False
+
             etype = event.get("type")
             part = event.get("part", {})
 
             if etype == "text":
                 text = part.get("text", "")
                 response_parts.append(text)
-                print(text)
+                print(text, end="", flush=True)
             elif etype == "tool_use":
                 state = part.get("state", {})
                 tool = part.get("tool", "unknown")
                 inp = state.get("input", {})
                 out = state.get("output", "")
-                print(f"\n--- [{tool}] ---")
+                print(f"\n[{tool}]", flush=True)
                 if isinstance(inp, dict) and inp.get("command"):
                     print(f"$ {inp['command']}")
                 elif isinstance(inp, str):
@@ -78,18 +96,19 @@ def parse_events(proc):
                     if len(out_str) > 1000:
                         out_str = out_str[:1000] + "..."
                     print(out_str)
-                print(f"--- end [{tool}] ---\n")
             elif etype == "step_start":
-                print("thinking...", flush=True)
+                print("[thinking...]", flush=True)
             elif etype == "step_finish":
                 tokens = part.get("tokens", {})
                 cost = part.get("cost", 0)
-                print(f"[tokens: in={tokens.get('input', 0)} out={tokens.get('output', 0)} cost=${cost:.4f}]")
+                print(f"[step done: in={tokens.get('input', 0)} out={tokens.get('output', 0)} ${cost:.4f}]", flush=True)
             elif etype == "error":
-                print(f"[error] {event.get('error', {})}")
+                print(f"[error] {event.get('error', {})}", flush=True)
 
     if buf.strip():
         print(f"[unparsed] {buf[:200]}")
+
+    print(f"[total lines read: {line_count}]", flush=True)
     proc.wait()
     return "\n".join(response_parts)
 
@@ -114,19 +133,20 @@ def build_prompt(question, history, use_kb=True):
 def run_turn(workspace, question, history, use_kb=True):
     prompt = build_prompt(question, history, use_kb)
     env = os.environ.copy()
-    env["GOOGLE_GENERATIVE_AI_API_KEY"] = os.environ["GEMINI_API_KEY_0"]
+    env["GOOGLE_GENERATIVE_AI_API_KEY"] = os.environ["GEMINI_API_KEY_4"]
     env["OPENCODE_DISABLE_AUTOUPDATE"] = "true"
     env["OPENCODE_DISABLE_LSP_DOWNLOAD"] = "true"
 
-    proc = subprocess.Popen(
-        ["opencode", "run", "--format", "json", prompt],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
+    print("[starting opencode...]", flush=True)
+    result = subprocess.run(
+        ["opencode", "run", prompt],
         cwd=str(workspace),
         env=env,
+        capture_output=False,
         text=True,
     )
-    return parse_events(proc)
+    print(f"\n[opencode exited with code {result.returncode}]", flush=True)
+    return ""
 
 
 def main():

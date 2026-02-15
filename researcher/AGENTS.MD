@@ -27,7 +27,7 @@ Ensure that there is a line break between each citation.
 ## Task
 
 Your goal is to contribute correct, verified, clear and low verbosity information to the knowledgebase.
-Your task and **target file** have been given to you in the prompt. Your changes should probably only be in this main file.
+Your task and **target file** have been given to you in the prompt. Your changes should probably only be in this main file. You may also want to add basic information to an OVERVIEW.md file if it helps with context, and create a markdown link to yourself.
 You are working on a knowledge base repo full of information that is verified and cited. 
 You should be **extremely* careful to only introduce verified information, and be as precise as possible. Make sure when addressing information that is important but unknown or uncertain, you clearly state the citations that lead to this conclusion.
 Make sure to thoroughly research the prompt and provide a comprehensive answer.
