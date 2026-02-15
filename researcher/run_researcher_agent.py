@@ -95,7 +95,7 @@ def run(topic, prompt, file_path, websites, repo, agent_id=None, key_index=0):
         sb = modal.Sandbox.create(
             "sleep", "infinity",
             image=image, secrets=[secret], app=app,
-            workdir="/root/code", timeout=15 * MINUTES,
+            workdir="/root/code", timeout=20 * MINUTES,
         )
 
     # Clone the knowledgebase repo

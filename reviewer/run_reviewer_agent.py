@@ -77,7 +77,7 @@ def run(repo, pr, agent_id=None, key_index=0):
         sb = modal.Sandbox.create(
             "sleep", "infinity",
             image=image, secrets=[secret], app=app,
-            workdir="/root/code", timeout=5 * MINUTES,
+            workdir="/root/code", timeout=20 * MINUTES,
         )
 
     clone_url = f"https://x-access-token:$GITHUB_PAT@github.com/{repo}.git"
