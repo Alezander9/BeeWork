@@ -35,8 +35,8 @@ The PR number and repo are provided in your prompt.
 
 ## Constraints
 
-- Do NOT fetch external URLs or visit websites.
-- Do NOT use your own knowledge to question cited facts. If a claim has a citation, trust it.
+- Do NOT read or download webpage content. Only validate URLs using `check_urls.sh`.
+- Do NOT use your own knowledge to question cited facts. If a claim has a citation and the URL is valid, trust it.
 - Only flag factual problems when the PR directly contradicts something already in the knowledgebase.
 
 ## Citation format
