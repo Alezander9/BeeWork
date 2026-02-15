@@ -32,4 +32,10 @@ export default defineSchema({
     })),
     fetchedAt: v.number(),
   }).index("by_session", ["sessionId"]),
+
+  repoCache: defineTable({
+    repo: v.string(),
+    flatText: v.string(),
+    fetchedAt: v.number(),
+  }).index("by_repo", ["repo"]),
 });

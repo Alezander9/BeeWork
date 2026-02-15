@@ -6,6 +6,7 @@ import { Check, Circle, CircleDashed } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import SettingsDialog from "@/components/SettingsDialog";
+import ChatOverlay from "@/components/ChatOverlay";
 import beePng from "@/assets/bee.png";
 
 // --- Log ticker ---
@@ -411,9 +412,11 @@ export default function NewSessionView() {
   const navigate = useNavigate();
   const sessionId = id as Id<"sessions">;
 
+  const session = useQuery(api.sessions.getSession, { sessionId });
   const logs = useQuery(api.sessions.getSessionLogs, { sessionId });
   const events = useQuery(api.sessions.getSessionEvents, { sessionId });
   const repoTree = useQuery(api.sessions.getRepoTree, { sessionId });
+  const sessionComplete = session?.status === "completed" || session?.status === "failed";
   const fetchTree = useAction(api.sessions.fetchRepoTree);
   const { line, push } = useLogTicker();
   const orchSteps = useOrchSteps(events);
@@ -442,17 +445,18 @@ export default function NewSessionView() {
 
   const seenLogs = useRef(0);
   useEffect(() => {
-    if (!logs) return;
+    if (!logs || sessionComplete) return;
     if (logs.length > seenLogs.current) {
       const newBatches = logs.slice(seenLogs.current);
       seenLogs.current = logs.length;
       const lines = newBatches.flatMap((b) => b.text.split("\n").filter(Boolean));
       push(...lines);
     }
-  }, [logs, push]);
+  }, [logs, push, sessionComplete]);
 
   return (
     <div className="h-screen bg-background/50 pb-16 flex flex-col overflow-hidden">
+      <ChatOverlay defaultRepo={repoTree?.repo} />
       {/* Top bar: breadcrumb */}
       <header className="w-full px-6 py-4">
         <div className="flex items-center gap-2 text-sm">

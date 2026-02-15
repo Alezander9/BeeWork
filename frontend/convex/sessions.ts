@@ -178,6 +178,13 @@ export const _upsertRepoTree = internalMutation({
 
 // --- Queries ---
 
+export const getSession = query({
+  args: { sessionId: v.id("sessions") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.sessionId);
+  },
+});
+
 export const listSessions = query({
   handler: async (ctx) => {
     return await ctx.db
