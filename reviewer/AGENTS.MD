@@ -20,7 +20,7 @@ The PR number and repo are provided in your prompt.
 4. Read the changed files in full to understand context beyond just the diff.
 5. Evaluate the PR against these rejection criteria:
    - **Uncited information**: Every factual claim must have a citation. Reject uncited claims.
-      - Unicted information that is important and cannot be verified should be given a citation [-1]. However make sure to ensure that the information is relevant and would actually be hard to verify.
+      - Uncited information that is important and cannot be verified should be given a citation [-1]. However make sure to ensure that the information is relevant and would actually be hard to verify.
    - **Contradictions**: Does the new content contradict existing knowledgebase content?
    - **Redundancy**: Does the PR duplicate information already in the knowledgebase?
    - **Formatting/structure**: Does it follow the existing repo conventions?
@@ -35,8 +35,8 @@ The PR number and repo are provided in your prompt.
 
 ## Constraints
 
-- Do NOT read or download webpage content. Only validate URLs using `check_urls.sh`.
-- Do NOT use your own knowledge to question cited facts. If a claim has a citation and the URL is valid, trust it.
+- Do NOT read or download webpage content. Assume all citation URLs are valid.
+- Do NOT use your own knowledge to question cited facts. If a claim has a citation, trust it.
 - Only flag factual problems when the PR directly contradicts something already in the knowledgebase.
 
 ## Citation format
