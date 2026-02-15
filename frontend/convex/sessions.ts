@@ -185,7 +185,7 @@ export const getSession = query({
     return await ctx.db.get(args.sessionId);
   },
 });
-
+ 
 export const listSessions = query({
   handler: async (ctx) => {
     const all = await ctx.db
