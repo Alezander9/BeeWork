@@ -22,4 +22,14 @@ export default defineSchema({
     data: v.any(),
     createdAt: v.number(),
   }).index("by_session", ["sessionId", "createdAt"]),
+
+  repoTrees: defineTable({
+    sessionId: v.id("sessions"),
+    repo: v.string(),
+    tree: v.array(v.object({
+      path: v.string(),
+      type: v.string(),
+    })),
+    fetchedAt: v.number(),
+  }).index("by_session", ["sessionId"]),
 });

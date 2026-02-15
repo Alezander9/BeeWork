@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useQuery } from "convex/react";
+import { useQuery, useAction } from "convex/react";
 import { motion } from "motion/react";
-import { Check, CircleDashed, Loader2 } from "lucide-react";
+import { Check, Circle, CircleDashed } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import SettingsDialog from "@/components/SettingsDialog";
@@ -167,6 +167,52 @@ function useWorkers(events: { type: string; data: Record<string, unknown> }[] | 
   }, [events]);
 }
 
+// --- PR state from events ---
+
+interface PRInfo {
+  pr: number;
+  agentId: string;
+  repo?: string;
+  topic?: string;
+  status: "pending" | "reviewing" | "merged" | "closed" | "open";
+}
+
+function usePRs(events: { type: string; data: Record<string, unknown> }[] | undefined) {
+  return useMemo(() => {
+    const map = new Map<number, PRInfo>();
+    if (!events) return [];
+    for (const e of events) {
+      const d = e.data as Record<string, unknown>;
+      switch (e.type) {
+        case "pr_created":
+          map.set(d.pr as number, {
+            pr: d.pr as number,
+            agentId: d.agent_id as string,
+            repo: d.repo as string | undefined,
+            topic: d.topic as string | undefined,
+            status: "pending",
+          });
+          break;
+        case "reviewer_started": {
+          const existing = map.get(d.pr as number);
+          if (existing) existing.status = "reviewing";
+          break;
+        }
+        case "pr_reviewed": {
+          const existing = map.get(d.pr as number);
+          if (existing) {
+            const state = d.state as string;
+            if (state === "merged" || state === "closed" || state === "open")
+              existing.status = state;
+          }
+          break;
+        }
+      }
+    }
+    return Array.from(map.values());
+  }, [events]);
+}
+
 // --- Layout ---
 
 const COLUMN_FOCUS_FLEX: Record<string, number> = {
@@ -201,7 +247,7 @@ const beeTransition = {
 
 function StepIcon({ status }: { status: StepStatus }) {
   if (status === "done") return <Check className="w-4 h-4 text-green-700" />;
-  if (status === "running") return <Loader2 className="w-4 h-4 text-bee-yellow animate-spin" />;
+  if (status === "running") return <Circle className="w-4 h-4 text-bee-yellow" />;
   return <CircleDashed className="w-4 h-4 text-muted-foreground/50" />;
 }
 
@@ -240,6 +286,9 @@ function BeePanel({
 // --- Worker card ---
 
 const WORKER_WIDTH = 220;
+const IFRAME_INTERNAL_W = 1100;
+const IFRAME_INTERNAL_H = 620;
+const IFRAME_SCALE = WORKER_WIDTH / IFRAME_INTERNAL_W;
 
 function WorkerCard({ worker }: { worker: WorkerInfo }) {
   return (
@@ -251,8 +300,13 @@ function WorkerCard({ worker }: { worker: WorkerInfo }) {
         {worker.phase === "browsing" && worker.browserUrl ? (
           <iframe
             src={worker.browserUrl}
-            className="absolute inset-0 w-full h-full"
             sandbox="allow-scripts allow-same-origin"
+            style={{
+              width: IFRAME_INTERNAL_W,
+              height: IFRAME_INTERNAL_H,
+              transform: `scale(${IFRAME_SCALE})`,
+              transformOrigin: "top left",
+            }}
           />
         ) : worker.phase === "creating_pr" ? (
           <div className="w-full h-full flex flex-col items-center justify-center bg-secondary gap-1">
@@ -271,6 +325,85 @@ function WorkerCard({ worker }: { worker: WorkerInfo }) {
   );
 }
 
+// --- PR status badge ---
+
+const PR_STATUS_STYLE: Record<string, string> = {
+  pending: "bg-muted text-muted-foreground",
+  reviewing: "bg-secondary text-bee-yellow",
+  merged: "bg-secondary text-green-700",
+  closed: "bg-secondary text-destructive",
+  open: "bg-secondary text-foreground",
+};
+
+function PRStatusBadge({ status }: { status: string }) {
+  return (
+    <span className={`px-2 py-0.5 text-xs font-medium ${PR_STATUS_STYLE[status] ?? PR_STATUS_STYLE.pending}`}>
+      {status}
+    </span>
+  );
+}
+
+// --- File tree ---
+
+interface TreeNode {
+  name: string;
+  children: TreeNode[];
+}
+
+function buildTree(entries: { path: string; type: string }[]): TreeNode[] {
+  const root: TreeNode[] = [];
+  for (const entry of entries) {
+    if (entry.type !== "blob") continue;
+    const parts = entry.path.split("/");
+    let level = root;
+    for (let i = 0; i < parts.length; i++) {
+      const name = parts[i];
+      let existing = level.find((n) => n.name === name);
+      if (!existing) {
+        existing = { name, children: [] };
+        level.push(existing);
+      }
+      level = existing.children;
+    }
+  }
+  return root;
+}
+
+function FileTree({ entries }: { entries: { path: string; type: string }[] }) {
+  const tree = useMemo(() => buildTree(entries), [entries]);
+  return (
+    <ul className="text-xs font-mono pb-10 text-foreground">
+      {tree.map((node, i) => (
+        <TreeNodeRow key={node.name} node={node} isLast={i === tree.length - 1} prefix="" />
+      ))}
+    </ul>
+  );
+}
+
+function TreeNodeRow({ node, isLast, prefix }: { node: TreeNode; isLast: boolean; prefix: string }) {
+  const isDir = node.children.length > 0;
+  const [open, setOpen] = useState(true);
+  const connector = isLast ? "\u2514\u2500\u2500 " : "\u251C\u2500\u2500 ";
+  const childPrefix = prefix + (isLast ? "    " : "\u2502   ");
+  return (
+    <li>
+      <div
+        className={`whitespace-pre leading-5 ${isDir ? "cursor-pointer font-bold" : ""}`}
+        onClick={isDir ? () => setOpen(!open) : undefined}
+      >
+        {prefix}{connector}{node.name}{isDir ? "/" : ""}
+      </div>
+      {isDir && open && (
+        <ul>
+          {node.children.map((child, i) => (
+            <TreeNodeRow key={child.name} node={child} isLast={i === node.children.length - 1} prefix={childPrefix} />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
 // --- Component ---
 
 export default function NewSessionView() {
@@ -280,20 +413,32 @@ export default function NewSessionView() {
 
   const logs = useQuery(api.sessions.getSessionLogs, { sessionId });
   const events = useQuery(api.sessions.getSessionEvents, { sessionId });
+  const repoTree = useQuery(api.sessions.getRepoTree, { sessionId });
+  const fetchTree = useAction(api.sessions.fetchRepoTree);
   const { line, push } = useLogTicker();
   const orchSteps = useOrchSteps(events);
   const workers = useWorkers(events);
 
+  const prs = usePRs(events);
+
+  // Poll GitHub tree every 5s while mounted
+  useEffect(() => {
+    fetchTree({ sessionId }).catch(() => {});
+    const id = setInterval(() => fetchTree({ sessionId }).catch(() => {}), 5000);
+    return () => clearInterval(id);
+  }, [sessionId, fetchTree]);
+
   const orchDone = orchAllDone(orchSteps);
   const pipelineStarted = events?.some((e) => e.type === "pipeline_started") ?? false;
-  const pipelineDone = events?.some((e) => e.type === "pipeline_done") ?? false;
+  const allWorkersDone = workers.length > 0 && workers.every((w) => w.status === "done");
+  const hasActiveReviewers = prs.some((p) => p.status === "reviewing");
 
   const activeColumns = useMemo(() => ({
     Orchestrator: pipelineStarted && !orchDone,
-    Workers: orchDone && !pipelineDone,
-    Reviewers: false,
+    Workers: orchDone && !allWorkersDone,
+    Reviewers: hasActiveReviewers,
     Github: false,
-  }), [pipelineStarted, orchDone, pipelineDone]);
+  }), [pipelineStarted, orchDone, allWorkersDone, hasActiveReviewers]);
 
   const seenLogs = useRef(0);
   useEffect(() => {
@@ -330,7 +475,7 @@ export default function NewSessionView() {
           transition={spring}
           className="min-w-0 flex flex-col items-center justify-center p-4 overflow-y-auto"
         >
-          <BeePanel label="Orchestrator" active={activeColumns["Orchestrator"]}>
+          <BeePanel label="Queen Bee" active={activeColumns["Orchestrator"]}>
             <ul className="space-y-2 pb-10">
               {orchSteps.map((step) => (
                 <li key={step.event} className="flex items-center justify-between gap-2 text-sm">
@@ -352,7 +497,7 @@ export default function NewSessionView() {
           transition={spring}
           className="min-w-0 flex flex-col items-center justify-center p-4 overflow-y-auto"
         >
-          <BeePanel label="Workers" active={activeColumns["Workers"]}>
+          <BeePanel label="Forager Bees" active={activeColumns["Workers"]}>
             {workers.length === 0 ? (
               <p className="text-xs text-muted-foreground">No workers yet</p>
             ) : (
@@ -385,10 +530,36 @@ export default function NewSessionView() {
         <motion.div
           animate={{ flex: activeColumns["Reviewers"] ? COLUMN_FOCUS_FLEX["Reviewers"] : 1, width: "auto" }}
           transition={spring}
-          className="min-w-0 flex flex-col items-center p-4 overflow-y-auto"
+          className="min-w-0 flex flex-col items-center justify-center p-4 overflow-y-auto"
         >
-          <BeePanel label="Reviewers" active={activeColumns["Reviewers"]} fill>
-            <p className="text-xs text-muted-foreground">Reviewer content here</p>
+          <BeePanel label="House Bees" active={activeColumns["Reviewers"]}>
+            {prs.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No PRs yet</p>
+            ) : (
+              <ul className="divide-y divide-border pb-10">
+                {prs.map((pr) => (
+                  <li key={pr.pr} className="flex items-center justify-between gap-2 py-2 text-sm">
+                    <span className="truncate">
+                      <span className="font-mono">#{pr.pr}</span>{" "}
+                      <span className="text-muted-foreground">{pr.topic ?? pr.agentId}</span>
+                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <PRStatusBadge status={pr.status} />
+                      {pr.repo && (
+                        <a
+                          href={`https://github.com/${pr.repo}/pull/${pr.pr}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-accent hover:underline text-xs"
+                        >
+                          link
+                        </a>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </BeePanel>
         </motion.div>
 
@@ -400,7 +571,30 @@ export default function NewSessionView() {
           transition={spring}
           className="p-4 min-w-0 flex flex-col items-center justify-center overflow-y-auto"
         >
-          <p className="text-sm font-bold">Github</p>
+          <div className="w-full min-h-[160px] bg-background overflow-y-auto p-3">
+            {repoTree?.repo && (
+              <div className="flex items-center gap-3 mb-3">
+                <span className="text-sm font-mono font-bold text-foreground">
+                  github.com/{repoTree.repo}
+                </span>
+                <a
+                  href={`https://github.com/${repoTree.repo}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-accent hover:underline"
+                >
+                  link
+                </a>
+              </div>
+            )}
+            {!repoTree ? (
+              <p className="text-sm text-muted-foreground">Loading tree...</p>
+            ) : repoTree.tree.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Empty repository</p>
+            ) : (
+              <FileTree entries={repoTree.tree} />
+            )}
+          </div>
         </motion.div>
       </main>
 

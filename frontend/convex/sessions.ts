@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { query, action, internalMutation } from "./_generated/server";
+import { query, action, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 
 // --- Mutations ---
@@ -105,6 +105,77 @@ export const startSession = action({
   },
 });
 
+export const fetchRepoTree = action({
+  args: { sessionId: v.id("sessions") },
+  handler: async (ctx, args) => {
+    const session = await ctx.runQuery(internal.sessions._getSession, { sessionId: args.sessionId });
+    if (!session) return;
+
+    const owner = process.env.GITHUB_OWNER ?? "workerbee-gbt";
+    const fullRepo = session.repo.includes("/") ? session.repo : `${owner}/${session.repo}`;
+
+    const pat = process.env.GITHUB_PAT;
+    if (!pat) return;
+
+    async function save(tree: { path: string; type: string }[]) {
+      await ctx.runMutation(internal.sessions._upsertRepoTree, {
+        sessionId: args.sessionId,
+        repo: fullRepo,
+        tree,
+      });
+    }
+
+    const headers = { Authorization: `Bearer ${pat}`, Accept: "application/vnd.github+json" };
+
+    const repoResp = await fetch(`https://api.github.com/repos/${fullRepo}`, { headers });
+    if (!repoResp.ok) return await save([]);
+    const { default_branch } = await repoResp.json() as { default_branch: string };
+
+    const resp = await fetch(
+      `https://api.github.com/repos/${fullRepo}/git/trees/${default_branch}?recursive=1`,
+      { headers },
+    );
+    if (!resp.ok) return await save([]);
+
+    const body = await resp.json() as { tree: { path: string; type: string }[] };
+    const tree = body.tree.map((e: { path: string; type: string }) => ({ path: e.path, type: e.type }));
+    await save(tree);
+  },
+});
+
+// --- Internal helpers for fetchRepoTree ---
+
+export const _getSession = internalQuery({
+  args: { sessionId: v.id("sessions") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.sessionId);
+  },
+});
+
+export const _upsertRepoTree = internalMutation({
+  args: {
+    sessionId: v.id("sessions"),
+    repo: v.string(),
+    tree: v.array(v.object({ path: v.string(), type: v.string() })),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("repoTrees")
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+      .first();
+    if (existing) {
+      await ctx.db.patch(existing._id, { tree: args.tree, fetchedAt: Date.now() });
+    } else {
+      await ctx.db.insert("repoTrees", {
+        sessionId: args.sessionId,
+        repo: args.repo,
+        tree: args.tree,
+        fetchedAt: Date.now(),
+      });
+    }
+  },
+});
+
 // --- Queries ---
 
 export const listSessions = query({
@@ -135,5 +206,15 @@ export const getSessionEvents = query({
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
       .order("asc")
       .collect();
+  },
+});
+
+export const getRepoTree = query({
+  args: { sessionId: v.id("sessions") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("repoTrees")
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+      .first();
   },
 });
