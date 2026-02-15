@@ -34,7 +34,7 @@ It is important that their is a mix of specific data / information and broad sum
 - Make sure to look at different perspectives on the industry, both bullish and bearish perspectives. 
 - For regulations, look at a both a mix of the stated regulatory goals and impacts, and how the market reacts and the actual impacts. 
 - This data is to be used by hedge fund analysts to make investment decisions. 
-- Create an indepth file struture for the knowledgebase, and make sure to include all relevant information.
+- Create an in depth file structure for the knowledgebase, and make sure to include all relevant information.
 - Be aggressive in the number of research tasks you create, and make sure to look at a wide range of sources.
 - Be sure to always look at multiple perspectives on a topic, and make sure to include information about potential risks and opportunities. 
 

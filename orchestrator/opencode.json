@@ -3,7 +3,7 @@
   "agent": {
     "build": {
       "mode": "primary",
-      "model": "google/gemini-3-flash-preview",
+      "model": "google/gemini-3-pro-preview",
       "tools": {
         "write": true,
         "edit": true,
