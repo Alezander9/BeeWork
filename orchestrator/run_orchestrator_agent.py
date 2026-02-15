@@ -118,7 +118,7 @@ def run(repo_name, project_path, key_index=0):
     github_pat = os.environ["GITHUB_PAT"]
     Laminar.initialize(project_api_key=os.environ["LMNR_PROJECT_API_KEY"])
 
-    app = modal.App.lookup("test-opencode", create_if_missing=True)
+    app = modal.App.lookup("beework-orchestrator", create_if_missing=True)
     secret = modal.Secret.from_dict({
         "ANTHROPIC_API_KEY": os.environ["ANTHROPIC_API_KEY"],
         "GOOGLE_GENERATIVE_AI_API_KEY": os.environ[gemini_env],
