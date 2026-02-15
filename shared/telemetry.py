@@ -1,25 +1,82 @@
-"""Telemetry -- post pipeline events to Convex for the live dashboard.
+"""BeeWork telemetry -- posts logs and events to Convex for the frontend."""
 
-Call emit() from anywhere in the pipeline to send a structured event.
-Events are fire-and-forget: failures are logged but never block the pipeline.
-"""
+import os
+import threading
+import time
 
-import httpx
+import requests
 
-CONVEX_URL: str | None = None  # set via configure()
+FLUSH_INTERVAL = 1.0
+
+_session_id: str | None = None
+_site_url: str | None = None
+_secret: str | None = None
+_buf: list[str] = []
+_buf_lock = threading.Lock()
+_flush_thread: threading.Thread | None = None
+_stop = threading.Event()
 
 
-def configure(convex_url: str) -> None:
-    global CONVEX_URL
-    CONVEX_URL = convex_url.rstrip("/")
-
-
-def emit(run_id: str, event_type: str, data: dict | None = None) -> None:
-    """Post a single event to Convex. Non-blocking best-effort."""
-    if not CONVEX_URL:
+def init(session_id: str):
+    global _session_id, _site_url, _secret, _flush_thread
+    _session_id = session_id
+    _site_url = os.environ.get("CONVEX_SITE_URL")
+    _secret = os.environ.get("BEEWORK_SECRET_KEY")
+    if not _site_url or not _secret:
+        print("[telemetry] CONVEX_SITE_URL or BEEWORK_SECRET_KEY not set -- telemetry disabled")
         return
-    payload = {"run_id": run_id, "type": event_type, "data": data or {}}
+    _stop.clear()
+    _flush_thread = threading.Thread(target=_flush_loop, daemon=True)
+    _flush_thread.start()
+
+
+def _flush_loop():
+    while not _stop.is_set():
+        _stop.wait(FLUSH_INTERVAL)
+        _do_flush()
+
+
+def _do_flush():
+    if not _session_id or not _site_url:
+        return
+    with _buf_lock:
+        if not _buf:
+            return
+        text = "\n".join(_buf)
+        _buf.clear()
+    _post("/ingest", {"kind": "log", "sessionId": _session_id, "text": text})
+
+
+def log(*lines: str):
+    with _buf_lock:
+        _buf.extend(lines)
+
+
+def event(event_type: str, data: dict | None = None):
+    if not _session_id or not _site_url:
+        return
+    _post("/ingest", {
+        "kind": "event",
+        "sessionId": _session_id,
+        "type": event_type,
+        "data": data or {},
+    })
+
+
+def status(new_status: str):
+    if not _session_id or not _site_url:
+        return
+    _post("/updateStatus", {"sessionId": _session_id, "status": new_status})
+
+
+def flush():
+    _do_flush()
+    _stop.set()
+
+
+def _post(path: str, body: dict):
     try:
-        httpx.post(f"{CONVEX_URL}/api/events", json=payload, timeout=5)
+        body["secret"] = _secret
+        requests.post(f"{_site_url}{path}", json=body, timeout=10)
     except Exception as e:
-        print(f"[telemetry] failed to emit {event_type}: {e}")
+        print(f"[telemetry] post failed: {e}")

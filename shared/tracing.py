@@ -8,6 +8,8 @@ import json
 
 from lmnr import Laminar
 
+from shared import telemetry
+
 
 def parse_jsonl(proc):
     """Yield parsed JSON objects from a PTY-backed JSONL stream.
@@ -74,7 +76,9 @@ def observe_agent_events(proc, model_id, agent_name="agent_run", metadata=None, 
                             "gen_ai.usage.cost": cost,
                         })
                         span.end()
-                    print(f"[{tag}step] tokens={tokens} cost={cost}")
+                    msg = f"[{tag}step] tokens={tokens} cost={cost}"
+                    print(msg)
+                    telemetry.log(msg)
 
                 elif etype == "tool_use":
                     state = part.get("state", {})
@@ -83,7 +87,9 @@ def observe_agent_events(proc, model_id, agent_name="agent_run", metadata=None, 
                         name=tool_name, input=state.get("input", {}), span_type="TOOL",
                     ):
                         Laminar.set_span_output(state.get("output", ""))
-                    print(f"[{tag}tool] {tool_name}")
+                    msg = f"[{tag}tool] {tool_name}"
+                    print(msg)
+                    telemetry.log(msg)
 
                 elif etype == "text":
                     text = part.get("text", "")
@@ -91,10 +97,14 @@ def observe_agent_events(proc, model_id, agent_name="agent_run", metadata=None, 
                         name="text", input={"text": text}, span_type="TOOL",
                     ):
                         Laminar.set_span_output(text)
-                    print(f"[{tag}text] {text[:200]}")
+                    msg = f"[{tag}text] {text[:200]}"
+                    print(msg)
+                    telemetry.log(msg)
 
                 elif etype == "error":
-                    print(f"[{tag}error] {event.get('error', {})}")
+                    msg = f"[{tag}error] {event.get('error', {})}"
+                    print(msg)
+                    telemetry.log(msg)
 
             for span in step_stack:
                 span.end()
