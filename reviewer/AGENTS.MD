@@ -42,12 +42,16 @@ The PR number and repo are provided in your prompt.
 
 ## Citation format
 
-For all substantive claims, ensure that their is a citation to the URL it came from. The format should be `[citation number]` and at the bottom of the file, there should be a list of citations in the format:
+For all substantive claims, ensure that their is a citation to the URL it came from. The format should be `[<citation number>]` and at the bottom of the file, there should be a list of citations in the format:
 
 ### Citations
+
 [citation 1] : <url>
+
 [citation 2] : <url>
+
 [citation 3] : <url>
+
 ...
 
 ## Review Philosophy

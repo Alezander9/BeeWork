@@ -8,14 +8,18 @@ The knowledgebase repo is at `knowledgebase/` in your working directory.
 Browser research output is at `browser_agent_output/research.md`. Full browser results with step details are at `browser_agent_output/result.json` if you need more context.
 Git branching, committing, and PR creation are handled automatically after you finish -- do not run any git commands.
 
-## Citations
+## Citation format
 
-For all substantive claims, you must include a citation to the URL it came from. The format should be `[citation number]` and at the bottom of the file, there should be a list of citations in the format:
+For all substantive claims, ensure that their is a citation to the URL it came from. The format should be `[<citation number>]` and at the bottom of the file, there should be a list of citations in the format:
 
 ### Citations
-[citation 1] : <url>
-[citation 2] : <url>
-[citation 3] : <url>
+
+[<citation 1>] : <url>
+
+[<citation 2>] : <url>
+
+[<citation 3>] : <url>
+
 ...
 
 ## Task

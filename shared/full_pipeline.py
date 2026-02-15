@@ -23,6 +23,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 OWNER = "workerbee-gbt"
 NUM_GEMINI_KEYS = 5
 REVIEW_POLL_INTERVAL = 2.0
+TASK_TIMEOUT = 15 * 60  # seconds -- skip a stuck task after this
 
 REQUIRED_ENV_VARS = [
     "GEMINI_API_KEY_0",
@@ -38,6 +39,25 @@ def _topic_slug(topic: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", topic.lower()).strip("-")
 
 
+def _run_with_timeout(fn, label, timeout=TASK_TIMEOUT):
+    """Run *fn* in a daemon thread; return True if it finished, False if timed out."""
+    result = {}
+    def _wrapper():
+        try:
+            result["value"] = fn()
+        except Exception as e:
+            result["error"] = e
+    t = threading.Thread(target=_wrapper, daemon=True)
+    t.start()
+    t.join(timeout=timeout)
+    if t.is_alive():
+        print(f"[timeout] {label} still running after {timeout}s -- skipping")
+        return None
+    if "error" in result:
+        raise result["error"]
+    return result.get("value")
+
+
 # ---------------------------------------------------------------------------
 # Research worker
 # ---------------------------------------------------------------------------
@@ -51,14 +71,18 @@ def research_worker(research_q, review_q, full_repo):
         slug = task["research_agent_id"]
         try:
             from researcher.run_researcher_agent import run as research
-            pr = research(
-                topic=task["topic"],
-                prompt=task["prompt"],
-                file_path=task["file_path"],
-                websites=task["websites"],
-                repo=full_repo,
-                agent_id=slug,
-                key_index=task["key_index"],
+            pr = _run_with_timeout(
+                lambda: research(
+                    topic=task["topic"],
+                    prompt=task["prompt"],
+                    file_path=task["file_path"],
+                    websites=task["websites"],
+                    repo=full_repo,
+                    agent_id=slug,
+                    key_index=task["key_index"],
+                    label=slug,
+                ),
+                label=f"research:{slug}",
             )
             if pr is not None:
                 review_q.put({
@@ -119,11 +143,16 @@ def review_worker(review_q, full_repo, files_under_review, review_lock, done_eve
 
         try:
             from reviewer.run_reviewer_agent import run as review
-            review(
-                repo=full_repo,
-                pr=task["pr"],
-                agent_id=task["research_agent_id"],
-                key_index=task["key_index"],
+            review_label = f"review:PR#{task['pr']}"
+            _run_with_timeout(
+                lambda: review(
+                    repo=full_repo,
+                    pr=task["pr"],
+                    agent_id=task["research_agent_id"],
+                    key_index=task["key_index"],
+                    label=review_label,
+                ),
+                label=review_label,
             )
             print(f"[review] Done: PR #{task['pr']} ({task['research_agent_id']})")
         except Exception as e:

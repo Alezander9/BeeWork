@@ -50,41 +50,43 @@ def create_task(session_id, task, website=None):
     return resp.json()
 
 
-def poll_task(task_id):
+def poll_task(task_id, label="agent"):
+    tag = f"{label}:" if label else ""
     start = time.time()
     while True:
         elapsed = time.time() - start
         if elapsed > TIMEOUT:
-            print(f"[poll] timed out after {int(elapsed)}s")
+            print(f"[{tag}poll] timed out after {int(elapsed)}s")
             return {"status": "timeout", "output": "Browser agent timed out", "steps": []}
         resp = requests.get(f"{BASE_URL}/tasks/{task_id}", headers=headers())
         resp.raise_for_status()
         task = resp.json()
         status = task.get("status")
         steps = task.get("steps", [])
-        print(f"[poll] status={status} steps={len(steps)} elapsed={int(elapsed)}s")
+        print(f"[{tag}poll] status={status} steps={len(steps)} elapsed={int(elapsed)}s")
         if status in ("finished", "stopped"):
             return task
         time.sleep(POLL_INTERVAL)
 
 
-def run_browser_agent(task, website=None):
+def run_browser_agent(task, website=None, label="agent"):
     """Run a browser-use agent and return the cleaned result dict."""
+    tag = f"{label}:" if label else ""
     # Create session to get the live URL
     session = create_session()
     session_id = session["id"]
     live_url = session.get("liveUrl")
-    print(f"Session: {session_id}")
+    print(f"[{tag}session] {session_id}")
     if live_url:
-        print(f"Live URL: {live_url}")
+        print(f"[{tag}live] {live_url}")
 
     # Start the task in the session
     task_resp = create_task(session_id, task, website)
     task_id = task_resp["id"]
-    print(f"Task: {task_id}")
+    print(f"[{tag}task] {task_id}")
 
     # Poll until done
-    result = poll_task(task_id)
+    result = poll_task(task_id, label=label)
 
     # Strip fields the OpenCode agent doesn't need
     for key in ("id", "sessionId", "llm"):
@@ -95,10 +97,10 @@ def run_browser_agent(task, website=None):
 
     output = result.get("output")
     if output:
-        print(f"Output: {output}")
+        print(f"[{tag}output] {output}")
     verdict = result.get("judgeVerdict")
     if verdict is not None:
-        print(f"Judge verdict: {verdict}")
+        print(f"[{tag}judge] {verdict}")
 
     return result
 

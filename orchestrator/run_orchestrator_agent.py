@@ -132,7 +132,7 @@ def run(repo_name, project_path, key_index=0):
         sb = modal.Sandbox.create(
             "sleep", "infinity",
             image=image, secrets=[secret], app=app,
-            workdir="/root/code", timeout=25 * MINUTES,
+            workdir="/root/code", timeout=30 * MINUTES,
         )
 
     # Check if the repo already exists, create if not, then clone

@@ -59,8 +59,9 @@ def run_cmd(proc, show=False):
     return proc.returncode
 
 
-def run(topic, prompt, file_path, websites, repo, agent_id=None, key_index=0):
+def run(topic, prompt, file_path, websites, repo, agent_id=None, key_index=0, label=None):
     """Run a researcher agent for a single research task."""
+    tag = label or agent_id or "research"
     gemini_key = os.environ.get(f"GEMINI_API_KEY_{key_index}")
     if not gemini_key:
         raise EnvironmentError(f"Set GEMINI_API_KEY_{key_index}")
@@ -77,10 +78,10 @@ def run(topic, prompt, file_path, websites, repo, agent_id=None, key_index=0):
     Laminar.initialize(project_api_key=lmnr_key)
 
     # --- Step 1: Run browser agent locally ---
-    print(f"Running browser agent for: {websites}")
-    browser_result = run_browser_agent(task=prompt, website=websites)
+    print(f"[{tag}] Running browser agent for: {websites}")
+    browser_result = run_browser_agent(task=prompt, website=websites, label=tag)
     result_json = json.dumps(browser_result, indent=2)
-    print(f"Browser agent finished (status: {browser_result.get('status', 'unknown')})")
+    print(f"[{tag}] Browser agent finished (status: {browser_result.get('status', 'unknown')})")
 
     # --- Step 2: Create Modal sandbox ---
     app = modal.App.lookup("beework-worker", create_if_missing=True)
@@ -90,17 +91,17 @@ def run(topic, prompt, file_path, websites, repo, agent_id=None, key_index=0):
         "GH_TOKEN": github_pat,
     })
 
-    print(f"Creating sandbox...")
+    print(f"[{tag}] Creating sandbox...")
     with modal.enable_output():
         sb = modal.Sandbox.create(
             "sleep", "infinity",
             image=image, secrets=[secret], app=app,
-            workdir="/root/code", timeout=20 * MINUTES,
+            workdir="/root/code", timeout=10 * MINUTES,
         )
 
     # Clone the knowledgebase repo
     clone_url = f"https://x-access-token:$GITHUB_PAT@github.com/{repo}.git"
-    print(f"Cloning {repo} into {KB_DIR}...")
+    print(f"[{tag}] Cloning {repo} into {KB_DIR}...")
     rc = run_cmd(sb.exec("bash", "-c", f"git clone {clone_url} {KB_DIR}"), show=True)
     if rc != 0:
         sb.terminate()
@@ -120,7 +121,7 @@ def run(topic, prompt, file_path, websites, repo, agent_id=None, key_index=0):
     encoded_output = base64.b64encode(output_text.encode()).decode()
     run_cmd(sb.exec("bash", "-c",
         f"echo '{encoded_output}' | base64 -d > {BROWSER_OUTPUT_PATH}"))
-    print(f"Browser results written to sandbox")
+    print(f"[{tag}] Browser results written to sandbox")
 
     # --- Step 4: Run OpenCode agent ---
     agent_prompt = (
@@ -134,12 +135,12 @@ def run(topic, prompt, file_path, websites, repo, agent_id=None, key_index=0):
 
     # Run agent with --format json for structured JSONL output
     # pty=True is required -- OpenCode hangs on Modal without a pseudo-terminal
-    print(f"Running agent (model: {MODEL_ID})...")
+    print(f"[{tag}] Running agent (model: {MODEL_ID})...")
     proc = sb.exec("bash", "-c",
         f"opencode run --format json {shlex.quote(agent_prompt)}",
         pty=True)
     trace_meta = {"research_agent_id": agent_id, "topic": topic} if agent_id else {}
-    rc = observe_agent_events(proc, MODEL_ID, "researcher", metadata=trace_meta)
+    rc = observe_agent_events(proc, MODEL_ID, "researcher", metadata=trace_meta, label=tag)
 
     # --- Step 5: Create branch, commit, push, and open PR ---
     branch = f"research/{agent_id or 'unknown'}"
@@ -164,7 +165,7 @@ def run(topic, prompt, file_path, websites, repo, agent_id=None, key_index=0):
     pr_number = int(pr_raw) if pr_raw.isdigit() else None
 
     sb.terminate()
-    print(f"exit code: {rc}, pr: {pr_number}")
+    print(f"[{tag}] exit code: {rc}, pr: {pr_number}")
     return pr_number
 
 

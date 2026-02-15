@@ -54,8 +54,9 @@ def run_cmd(proc, show=False):
     return proc.returncode
 
 
-def run(repo, pr, agent_id=None, key_index=0):
+def run(repo, pr, agent_id=None, key_index=0, label=None):
     """Run a reviewer agent for a single PR. Called by pipeline or CLI."""
+    tag = label or f"review:PR#{pr}"
     gemini_env = f"GEMINI_API_KEY_{key_index}"
     required = [gemini_env, "GITHUB_PAT", "LMNR_PROJECT_API_KEY"]
     missing = [k for k in required if not os.environ.get(k)]
@@ -72,7 +73,7 @@ def run(repo, pr, agent_id=None, key_index=0):
         "GH_TOKEN": github_pat,
     })
 
-    print(f"Creating sandbox...")
+    print(f"[{tag}] Creating sandbox...")
     with modal.enable_output():
         sb = modal.Sandbox.create(
             "sleep", "infinity",
@@ -81,7 +82,7 @@ def run(repo, pr, agent_id=None, key_index=0):
         )
 
     clone_url = f"https://x-access-token:$GITHUB_PAT@github.com/{repo}.git"
-    print(f"Cloning {repo} into {KB_DIR}...")
+    print(f"[{tag}] Cloning {repo} into {KB_DIR}...")
     rc = run_cmd(sb.exec("bash", "-c", f"git clone {clone_url} {KB_DIR}"), show=True)
     if rc != 0:
         sb.terminate()
@@ -92,15 +93,15 @@ def run(repo, pr, agent_id=None, key_index=0):
         f"cd {KB_DIR} && git config user.name 'BeeWork' && git config user.email 'beework.buzz@gmail.com'"))
 
     prompt = f"Review PR #{pr} on repo {repo}. Follow the instructions in AGENTS.md."
-    print(f"Running agent (model: {MODEL_ID}), reviewing PR #{pr}...")
+    print(f"[{tag}] Running agent (model: {MODEL_ID}), reviewing PR #{pr}...")
     proc = sb.exec("bash", "-c",
         f"opencode run --format json {shlex.quote(prompt)}",
         pty=True)
     trace_meta = {"research_agent_id": agent_id, "pr": pr} if agent_id else {}
-    rc = observe_agent_events(proc, MODEL_ID, "reviewer", metadata=trace_meta)
+    rc = observe_agent_events(proc, MODEL_ID, "reviewer", metadata=trace_meta, label=tag)
 
     sb.terminate()
-    print(f"exit code: {rc}")
+    print(f"[{tag}] exit code: {rc}")
 
 
 def main():
