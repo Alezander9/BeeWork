@@ -13,8 +13,10 @@ Browser research results have already been collected and are available at `brows
 For all substantive claims, you must include a citation to the URL it came from. The format should be `[citation number]` and at the bottom of the file, there should be a list of citations in the format:
 
 ### Citations
-- `[citation number]: <url>`
-- ...
+[citation 1] : <url>
+[citation 2] : <url>
+[citation 3] : <url>
+...
 
 ## Task
 

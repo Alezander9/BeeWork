@@ -23,6 +23,7 @@ The PR number and repo are provided in your prompt.
       - Uncited information that is important and cannot be verified should be given a citation [-1]. However make sure to ensure that the information is relevant and would actually be hard to verify.
    - **Contradictions**: Does the new content contradict existing knowledgebase content?
    - **Redundancy**: Does the PR duplicate information already in the knowledgebase?
+      - If the redundancy is because the current repo already contains this information (not redundancy within the PR), make a greater effort to edit the files yourself to remove the redundancy.
    - **Formatting/structure**: Does it follow the existing repo conventions?
    - **Vague or filler content**: Reject content that is generic fluff with no concrete information.
 6. For each criticism you find, assess:
@@ -44,9 +45,10 @@ The PR number and repo are provided in your prompt.
 For all substantive claims, ensure that their is a citation to the URL it came from. The format should be `[citation number]` and at the bottom of the file, there should be a list of citations in the format:
 
 ### Citations
-- `[citation number]: <url>`
-- ...
-
+[citation 1] : <url>
+[citation 2] : <url>
+[citation 3] : <url>
+...
 
 ## Review Philosophy
 
